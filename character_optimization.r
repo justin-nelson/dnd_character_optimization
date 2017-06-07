@@ -1,11 +1,5 @@
-starting_dexterity = 20
-starting_intelligence = 16
-level_adjustment = 1
-
-
-
-
-
+source("feats.r")
+source("class.r")
 
 calculateAverageDamage = function(attacks, damage, defense){
   effective_hit_chance = (attacks - defense + 21) / 20
@@ -18,18 +12,25 @@ calculateAverageDamage = function(attacks, damage, defense){
   
   return(average_damage)
 }
+g_classList = function(build){ return(build$class[!is.na(build$class)]) }
+g_uniqClassList = function(build){ return(unique(g_classList(build))) }
 
 calculateBAB = function(build){
-  monk_levels = sum(build$class == "monk", na.rm=T)
-  high_levels = sum(build$class != "monk" & build$class != "any", na.rm=T)
-  BAB = high_levels + monk_levels - 1 - floor((monk_levels - 1)/4)
+  BAB = 0
+  if(calculateLevel(build) == 0) return(0)
+  for(class_n in g_uniqClassList(build)){
+    classLevel = g_classLevel(build, class_n)
+    if(cls_av[[class_n]][["BAB"]] == "high"){ BAB = BAB + classLevel }
+    if(cls_av[[class_n]][["BAB"]] == "medium"){ BAB = BAB + floor(0.75*classLevel) }
+    if(cls_av[[class_n]][["BAB"]] == "low"){ BAB = BAB + floor(0.5*class_level) }
+  }
   
   return(BAB)
 }
 
 calculateLevel = function(build){ 
   if(is.null(build$class)) return(0)
-  return(sum(!is.na(build$class))) 
+  return(length(g_classList(build)))
 }
 
 getAvailability = function(avail_classes, class){
@@ -45,29 +46,78 @@ getAvailability = function(avail_classes, class){
   
 }
 
-g_classLevel = function(build, class) { return(sum(build$class == class, na.rm=T)) }
+g_classLevel = function(build, class_n) { 
+  return(sum(build$class == class_n, na.rm=T)) 
+}
+g_classFeats = function(build, class_n, level){
+  if(is.null(cls_av[[class_n]][["feats"]])) return(c())
+  return(unlist(cls_av[[class_n]][["feats"]][1:g_classLevel(build, class_n)]))
+}
+g_feats = function(build){ 
+  c_feats = c()
+  ### Get the feats selected at level up
+  c_feats = c(c_feats, unlist(build$feats))
+
+  ### Get class feats
+  for(class_n in unique(build$class)){
+    c_feats = c(c_feats, g_classFeats(build, class_n, g_classLevel(build, class_n)))
+  }
+  
+  ### Get autogrant feats, these are feats that are prereqs for classes and such
+  for(feat_n in c_feats){
+    if(!is.null(feats_av[[feat_n]])){
+      if(!is.null(feats_av[[feat_n]][["grant"]])){
+        c_feats = c(c_feats, feats_av[[feat_n]][["grant"]])
+      }
+    }
+  }
+  
+  if(length(c_feats) > 0) c_feats = c_feats[!is.na(c_feats)]
+  return(c_feats)
+}
+
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
+
+hasAllFeats = function(build, feat_n){ return(all(feat_n %in% g_feats(build))) }
+hasAnyFeats = function(build, feat_n){ return(any(feat_n %in% g_feats(build))) }
+
+g_classSkills = function(build, class_n){
+  if(is.null(cls_av[[class_n]][["class_skills"]])) return(c())
+  return(cls_av[[class_n]][["class_skills"]])
+}
+g_skillMaxes = function(build, skill_n){
+  build$class = sapply(build$class[!is.na(build$class)], firstup)
+  maxSkill = 3+calculateLevel(build)
+  minSkill = floor(maxSkill/2)
+  skill = rep(minSkill, length(skill_n))
+  for(class_n in unique(build$class)){
+    skill[skill_n %in% g_classSkills(build, class_n)] = maxSkill
+  }
+  return(skill)
+}
 
 calculateQualifiedClasses = function(avail_classes, build, preferred_classes=c(), max_level=calculateLevel(build)+1, cooling=0.9){
   qual_class = c()
-  character_feats = unlist(build$feats)
+  c_feats = g_feats(build)
   
-  if(getAvailability(avail_classes, "fighter")         > g_classLevel(build, "fighter")      ){ qual_class = c(qual_class, "fighter")       }
-  if(getAvailability(avail_classes, "monk")            > g_classLevel(build, "monk")         ){ qual_class = c(qual_class, "monk")          }
-  if(getAvailability(avail_classes, "swashbuckler")    > g_classLevel(build, "swashbuckler") ){ qual_class = c(qual_class, "swashbuckler")  }
-  if(all(c("Dodge", "CE") %in% character_feats) 
-     & sum(c("WF(Kukri)", "WF(Kama)") %in% character_feats) 
-     & calculateBAB(build) >= 5
-     & getAvailability(avail_classes, "dervish")       > g_classLevel(build, "dervish")      ){ qual_class = c(qual_class, "dervish")       }
-  if(all(c("WF(Kukri)", "Feint") %in% character_feats)
-     & (g_classLevel(build, "dervish") > 0 || calculateLevel(build) >= 14)
-     & getAvailability(avail_classes, "invis_blade")   > g_classLevel(build, "invis_blade")  ){ qual_class = c(qual_class, "invis_blade")   }
-  if(all(c("WF(Kama)", "Dodge", "Mobility", "WhirlwindAttack", "CE") %in% character_feats)
-     & calculateBAB(build) >=5
-     & getAvailability(avail_classes, "weapon_master") > g_classLevel(build, "weapon_master")){ qual_class = c(qual_class, "weapon_master") }
+  for(class_n in names(cls_av)){
+    if(!is.null(cls_av[[class_n]][["prereq_BAB"]])){ if(cls_av[[class_n]][["prereq_BAB"]] > calculateBAB(build)) next } #BAB Check
+    if(!is.null(cls_av[[class_n]][["prereq_feats"]])){ if(!hasAllFeats(build, cls_av[[class_n]][["prereq_feats"]])) next } # prereq Feat Check
+    if(!is.null(cls_av[[class_n]][["prereq_skills"]])){ 
+      if(!all(g_skillMaxes(build, names(cls_av[[class_n]][["prereq_skills"]])) > cls_av[[class_n]][["prereq_skills"]])) next
+    }
+    qual_class = c(class_n, qual_class)
+  }
   
   class_table = sapply(3-table(build$class), max, 0)
   class_table = class_table[names(class_table) != "any"]
+  
+  ## If I already have 4 classes, I cannot take any more
   if(length(class_table) == 4)               { qual_class = qual_class[qual_class %in% build$class] }
+  ## If I am above level 20, the 3b20 rule will not allow me to take more
   if(calculateLevel(build) >= 20){ qual_class = qual_class[qual_class %in% build$class] }
   
   ## 3b20 rule, if we are already about to run into it, I cannot select a new class.
@@ -79,7 +129,6 @@ calculateQualifiedClasses = function(avail_classes, build, preferred_classes=c()
       qual_class = qual_class[qual_class %in% build$class]
     }
   }
-  
   
   ########################################################################################################
   ### Restrict to preferred classes
@@ -93,7 +142,6 @@ calculateQualifiedClasses = function(avail_classes, build, preferred_classes=c()
   # classes are problematic in that they greatly add to the branching factor. In order to restrict this
   # I perform a branch cutting algorithm here.
   qual_class = reduceClassBranchFactor(avail_classes, build, qual_class, max_level, cooling)
-  
   
   if(length(qual_class) == 0) return(c("any"))
   return(qual_class)
@@ -116,8 +164,9 @@ reduceClassBranchFactor = function(avail_classes, build, qualified_classes, max_
   return(reduced_list)
 }
 
-debug = function(){
+resetBuild = function(){
   build = createPrefixBuild(windmaster_char, 15, F)
+  return(build)
 }
 
 createBranchBuild = function(avail_classes, branch_build, qualified_classes, max_level=calculateLevel(build)+1, cooling=0.9, class_n="any"){
@@ -142,13 +191,13 @@ createBranchBuild = function(avail_classes, branch_build, qualified_classes, max
 # Sometimes I have a build that does not have feats
 # This function populates the feat list, with greedy optimization
 populateFeats = function(avail_classes, build, cooling=0.9){
-
+  
   for(i in 1:calculateLevel(build)){
     level_build = createPrefixBuild(build, calculateLevel(build) - i, F)
     number_of_feats = calculateNumberOfNewFeats(level_build)
     if(number_of_feats$total > 0){ # There should be a feat at this level
       if(length(build$feats) < i){ # But if there isn't, we need to add some ... optimally
-        level_build = levelFeat(level_build)
+        level_build = levelFeat(level_build, avail_classes)
         best_score = evaluateBuild(level_build)$score
         best_build = level_build
         
@@ -163,7 +212,7 @@ populateFeats = function(avail_classes, build, cooling=0.9){
         build$feats[[i]] = best_build$feats[[i]]
       }
     }
-
+    
   }
   return(build)
 }
@@ -174,59 +223,56 @@ lastCharacterClass = function(build){
   return(build$class[which(is.na(build$class))[1]-1]) 
 }
 
-fighter_feats_list = c("Dodge", "CE", "WF(Kukri)", "WF(Kama)", "TWF", "ITWF", "GTWF",
-                       "Deadly_defense", "Mobility", "SpringAttack", "WhirlwindAttack",
-                       "Weap_Fin", "WS", "GWF", "GWS", "WeaponMastery", "EWF", "EWS",
-                       "IC", "EpicProwess")
+g_stats = function(build, stats){
+  base_stats = build$stats
+  for(feat_n in g_feats(build)){
+    for(stat_n in names(base_stats)){
+      if(is.null(feats_av[[feat_n]][[paste("plus", stat_n, sep="")]])) next
+      base_stats[[stat_n]] = base_stats[[stat_n]] + feats_av[[feat_n]][[paste("plus", stat_n, sep="")]]
+    }
+  }
+  
+  if(!is.null(build$stat_increase)){ base_stats[[build$stat_increase]] = base_stats[[build$stat_increase]] + floor(calculateLevel(build) / 4) }
+  
+  return(unlist(base_stats[stats]))
+}
+
+g_featsInFeatType = function(feat_type){
+  feat_list = c()
+  for(feat_n in names(feats_av)){
+    if( is.null(feats_av[[feat_n]][["feat_type"]])        ) next
+    if( !feat_type %in% feats_av[[feat_n]][["feat_type"]] ) next
+    feat_list = c(feat_list, feat_n)
+  }
+  return(feat_list)
+}
 
 calculateQualifiedFeats = function(build, feat_type){
-  character_feats = unlist(build$feats)
-  qual_feats = c("TWF", "Dodge", "CE", "PowerfulCharge")
+  qual_feats = c()
   
-  dexterity = starting_dexterity + calculateLevel(build) / 4
-  if("GreatDex1" %in% character_feats) dexterity = dexterity + 1
+  available_feats = g_featsInFeatType(feat_type)
+  available_feats = available_feats[!available_feats %in% g_feats(build)]
+  for(feat_n in g_featsInFeatType(feat_type)){
+    if( !is.null(feats_av[[feat_n]][["prereq_level"]])  ){ if(feats_av[[feat_n]][["prereq_level"]] > calculateLevel(build)) next } # Level Check
+    if( !is.null(feats_av[[feat_n]][["prereq_BAB"]])    ){ if(feats_av[[feat_n]][["prereq_BAB"]] > calculateBAB(build)) next } # BAB Check
+    if( !is.null(feats_av[[feat_n]][["prereq_stat"]])   ){
+      if(!all(g_stats(build, names(feats_av[[feat_n]][["prereq_stat"]])) > feats_av[[feat_n]][["prereq_stat"]])) next
+    }
+    if( !is.null(feats_av[[feat_n]][["prereq_feats"]])  ){ if(!hasAllFeats(build, feats_av[[feat_n]][["prereq_feats"]])) next } # prereq Feat Check
+    if( !is.null(feats_av[[feat_n]][["prereq_skills"]]) ){ 
+      if(!all(g_skillMaxes(build, names(feats_av[[feat_n]][["prereq_skills"]])) > feats_av[[feat_n]][["prereq_skills"]])) next
+    }
+    if( !is.null(feats_av[[feat_n]][["prereq_class"]])  ){
+      prereq_classes_met = T
+      for(class_n in names(feats_av[[feat_n]][["prereq_class"]])){
+        if(g_classLevel(build, class_n) < feats_av[[feat_n]][["prereq_class"]][[class_n]]) prereq_classes_met = F
+      }
+      if(!prereq_classes_met) next
+    }
+    qual_feats = c(qual_feats, feat_n)
+  }
   
-  if(calculateBAB(build) >= 1
-     & g_classLevel(build, "swashbuckler") == 0) qual_feats = c(qual_feats, c("Weap_Fin"))
-  if(calculateBAB(build) >= 1
-     & g_classLevel(build, "fighter") > 0) qual_feats = c(qual_feats, "WF(Kukri)")
-  if(calculateBAB(build) >= 1
-     & g_classLevel(build, "monk") > 0) qual_feats = c(qual_feats, "WF(Kama)")
-  if("CE" %in% character_feats) qual_feats = c(qual_feats, c("Feint", "Deadly_defense"))
-  if(calculateBAB(build) >= 6
-     & "TWF" %in% character_feats) qual_feats = c(qual_feats, "ITWF")
-  if(calculateBAB(build) >= 11
-     & "ITWF" %in% character_feats) qual_feats = c(qual_feats, "GTWF")
-  if(calculateLevel(build) >= 21
-     & "GTWF" %in% character_feats
-     & dexterity >= 25) qual_feats = c(qual_feats, "PTWF")
-  if(calculateLevel(build) >= 21) qual_feats = c(qual_feats, c("GreatDex1", "EpicProwess"))
-  if(calculateLevel(build) >= 21
-     & all(c("EpicProwess", "CE") %in% character_feats)) qual_feats = c(qual_feats, "CombatInsight")
-  if(calculateLevel(build) >= 21
-     & g_classLevel(build, "dervish") >= 6) qual_feats = c(qual_feats, "EpicCharge")
-  if(g_classLevel(build, "fighter") >= 4
-     & "WF(Kama)" %in% character_feats) qual_feats = c(qual_feats, "WS")
-  if("Dodge" %in% character_feats) qual_feats = c(qual_feats, "Mobility")
-  if(calculateBAB(build) >= 4
-     & "Mobility" %in% character_feats) qual_feats = c(qual_feats, "SpringAttack")
-  if(calculateBAB(build) >= 4
-     & all(c("Dodge", "Mobility", "CE") %in% character_feats)
-     & ("SpringAttack" %in% character_feats || g_classLevel(build, "dervish") >= 3) ) qual_feats = c(qual_feats, "WhirlwindAttack")
-  if(g_classLevel(build, "fighter") >= 8
-     & "WF(Kama)" %in% character_feats) qual_feats = c(qual_feats, "GWF")
-  if(g_classLevel(build, "fighter") >= 12
-     & all(c("GWF", "WS") %in% character_feats)) qual_feats = c(qual_feats, "GWS")
-  if(g_classLevel(build, "fighter") >= 12) qual_feats = c(qual_feats, "WeaponMastery")
-  if(calculateLevel(build) >= 21
-     & "GWF" %in% character_feats
-     & g_classLevel(build, "fighter") >= 12) qual_feats = c(qual_feats, "EWF")
-  if(calculateLevel(build) >= 21
-     & all(c("GWS", "EWF") %in% character_feats)
-     & g_classLevel(build, "fighter") >= 12) qual_feats = c(qual_feats, "EWS")
-  if(calculateBAB(build) >= 8) qual_feats = c(qual_feats, "IC")
-  qual_feats = qual_feats[!qual_feats %in% character_feats]
-  if(feat_type == "fighter") qual_feats = qual_feats[qual_feats %in% fighter_feats_list]
+  qual_feats = qual_feats[!qual_feats %in% g_feats(build)]
   if(length(qual_feats) == 0) return(c("any"))
   return(qual_feats)
 }
@@ -237,77 +283,75 @@ calculateNumberOfNewFeats = function(build){
   if(calculateLevel(build) == 1) number_of_feats = number_of_feats+1
   if(calculateLevel(build) <= 20 & calculateLevel(build) %% 3 == 0) number_of_feats = number_of_feats+1
   if(calculateLevel(build) >  20 & calculateLevel(build) %% 2 == 1) number_of_feats = number_of_feats+1
-  if(lastCharacterClass(build) == "fighter" & g_classLevel(build, "fighter") == 1) fighter_feats = fighter_feats+1
-  if(lastCharacterClass(build) == "fighter" & g_classLevel(build, "fighter") %% 2 == 0) fighter_feats = fighter_feats+1
+  if(lastCharacterClass(build) == "Fighter" & g_classLevel(build, "Fighter") == 1) fighter_feats = fighter_feats+1
+  if(lastCharacterClass(build) == "Fighter" & g_classLevel(build, "Fighter") %% 2 == 0) fighter_feats = fighter_feats+1
   return(list(total=number_of_feats+fighter_feats,
               regular=number_of_feats,
               fighter=fighter_feats))
 }
 
 calculateAttacks = function(build, burst=T){
-  character_feats = unlist(build$feats)
+  
   BAB = calculateBAB(build)
   attack_bonus = 0
-  dexterity = starting_dexterity + calculateLevel(build) / 4
-  if("GreatDex1" %in% character_feats) dexterity = dexterity + 1
+  
   main_hand_attacks = c()
   off_hand_attacks = c()
   
-  number_of_attacks = max(floor((BAB-1)/5)+1, 1)
-  number_off_hand_attacks = 1
-  
-  if("ITWF" %in% character_feats) number_off_hand_attacks = number_off_hand_attacks + 1
-  if("GTWF" %in% character_feats) number_off_hand_attacks = number_off_hand_attacks + 1
-  if("PTWF" %in% character_feats) number_off_hand_attacks = number_of_attacks
-  
-  if(g_classLevel(build, "monk") >= 1) {
-    number_of_attacks = number_of_attacks + 2
-    number_off_hand_attacks = number_off_hand_attacks + 1
-  }
-  if(g_classLevel(build, "monk") >= 11) {
-    number_of_attacks = number_of_attacks + 1
-    number_off_hand_attacks = number_off_hand_attacks + 1
-  }
-  
-  
-
-  if(g_classLevel(build, "monk") <= 4) attack_bonus = attack_bonus - 1
-  if(g_classLevel(build, "monk") <= 8) attack_bonus = attack_bonus - 1
+  num_attacks_main = max(floor((BAB-1)/5)+1, 1)
+  num_attacks_off = 0
   
   attack_bonus = attack_bonus + 4 #Enhancement Bonus
+  attack_bonus = attack_bonus + g_stat_mod(build, "Strength")
   
-  if(!("TWF" %in% character_feats)) number_off_hand_attacks = 0
-  if("Weap_Fin" %in% character_feats
-     || g_classLevel(build, "swashbuckler") >= 1) attack_bonus = attack_bonus + floor((dexterity - 10) / 2)
-  if("EpicProwess" %in% character_feats) attack_bonus = attack_bonus + 1
-  if("WF(Kama)" %in% character_feats) attack_bonus = attack_bonus + 1
-  if("GWF" %in% character_feats) attack_bonus = attack_bonus + 1
-  if("EWF" %in% character_feats) attack_bonus = attack_bonus + 2
-  if("WeaponMastery" %in% character_feats) attack_bonus = attack_bonus + 2
-  if("Deadly_defense" %in% character_feats) attack_bonus = attack_bonus - 3
-
-  if(g_classLevel(build, "weapon_master") >= 5) attack_bonus = attack_bonus + 1
-  if(burst) {
-    attack_bonus = attack_bonus + floor(((g_classLevel(build, "dervish") - 1) / 2) + 1)
-    if("EpicCharge" %in% character_feats) attack_bonus = attack_bonus + 4
+  for(feat_n in unique(g_feats(build))){
+    if(!is.null(feats_av[[feat_n]][["attack_bonus"]])){
+      attack_bonus = attack_bonus + feats_av[[feat_n]][["attack_bonus"]](build, burst)
+    }
+    if(!is.null(feats_av[[feat_n]][["num_attacks_main"]])){
+      num_attacks_main = num_attacks_main + feats_av[[feat_n]][["num_attacks_main"]](build, burst)
+    }
+    if(!is.null(feats_av[[feat_n]][["num_attacks_off"]])){
+      num_attacks_off = num_attacks_off + feats_av[[feat_n]][["num_attacks_off"]](build, burst)
+    }
   }
-
+  
+  # Special Code for Perfect Two Weapon Fighting
+  if(hasAllFeats(build, "Perfect Two-Weapon Fighting")){
+    num_attacks_off = num_attacks_main
+  }
+  
+  # Special Code for Flurry of Blows
+  if(g_classLevel(build, "monk") <= 4) attack_bonus = attack_bonus - 1
+  if(g_classLevel(build, "monk") <= 8) attack_bonus = attack_bonus - 1
+  if(hasAllFeats(build, "Flurry of Blows")) {
+    main_hand_attacks = c(main_hand_attacks, BAB+attack_bonus)
+    num_attacks_off = num_attacks_off + 1
+  }
+  if(hasAllFeats(build, "Greater Flurry")) {
+    main_hand_attacks = c(main_hand_attacks, BAB+attack_bonus)
+    num_attacks_off = num_attacks_off + 1
+  }
+  
+  # Special Code for (not) two weapon fighting
+  if(!hasAllFeats(build, "Two-Weapon Fighting")){
+    num_attacks_off = 0
+  }
+  
   top_attack_bonus = BAB + attack_bonus
   
-  if(g_classLevel(build, "monk") >= 1)  { main_hand_attacks = c(main_hand_attacks, top_attack_bonus); number_of_attacks = number_of_attacks - 1; }
-  if(g_classLevel(build, "monk") >= 11) { main_hand_attacks = c(main_hand_attacks, top_attack_bonus); number_of_attacks = number_of_attacks - 1; }
-  
-  if(g_classLevel(build, "monk") >= 1 & number_off_hand_attacks > 0)   { off_hand_attacks = c(off_hand_attacks, top_attack_bonus); number_off_hand_attacks = number_off_hand_attacks - 1; }
-  if(g_classLevel(build, "monk") >= 11 & number_off_hand_attacks > 0)  { off_hand_attacks = c(off_hand_attacks, top_attack_bonus); number_off_hand_attacks = number_off_hand_attacks - 1; }
-  
-  main_hand_attacks = c(main_hand_attacks, seq(from=top_attack_bonus, to=top_attack_bonus-5*(number_of_attacks-1), by=-5))
-  if(number_off_hand_attacks > 0) off_hand_attacks = c(off_hand_attacks, seq(from=top_attack_bonus, to=top_attack_bonus-5*(number_off_hand_attacks-1), by=-5))
+  main_hand_attacks = c(main_hand_attacks, seq(from=top_attack_bonus, to=top_attack_bonus-5*(num_attacks_main-1), by=-5))
+  if(num_attacks_off > 0) off_hand_attacks = c(off_hand_attacks, seq(from=top_attack_bonus, to=top_attack_bonus-5*(num_attacks_off-1), by=-5))
   
   attacks = c(main_hand_attacks, off_hand_attacks)
   return(attacks)
 }
 
-calculateScore = function(damage_per_level){ return(sum((1:30+level_adjustment) * damage_per_level, na.rm=T)) }
+g_stat_mod = function(build, stat){
+  return(floor((g_stats(build, stat) - 10) / 2))
+}
+
+calculateScore = function(damage_per_level){ return(sum(1:30 * damage_per_level, na.rm=T)) }
 
 outputCharacter = function(build, burst_weight=0.5){
   cat("\n\n")
@@ -345,7 +389,7 @@ levelClass = function(build, avail_classes, preferred_classes=c(), max_level=cal
   return(build)
 }
 
-selectFeat = function(build, number, feat_type="regular"){
+selectFeat = function(build, number, feat_type="Regular"){
   cur_lv = calculateLevel(build)
   if(length(build$potential_feats) < cur_lv){
     build$potential_feats[[cur_lv]] = list()
@@ -355,12 +399,16 @@ selectFeat = function(build, number, feat_type="regular"){
   if(length(build$potential_feats[[cur_lv]]) < number){
     build$potential_feats[[cur_lv]][[number]] = calculateQualifiedFeats(build, feat_type) 
   }
-  if(number == 1) build$feats[[cur_lv]] = rep(NA, 3)
+  if(number == 1) {
+    build$feats[[cur_lv]] = rep(NA, 3)
+    build$feat_types[[cur_lv]] = rep(NA, 3)
+  }
   
   feat_ind = sample(1:length( build$potential_feats[[cur_lv]][[number]] ), 1)
   feat_name = build$potential_feats[[cur_lv]][[number]][feat_ind]
   build$feats[[cur_lv]][number] = feat_name
   build$potential_feats[[cur_lv]][[number]] = build$potential_feats[[cur_lv]][[number]][-1 * feat_ind]
+  build$feat_types[[cur_lv]][[number]] = feat_type
   
   return(build)
 }
@@ -368,22 +416,28 @@ selectFeat = function(build, number, feat_type="regular"){
 levelFeat = function(build, avail_classes, preferred_classes=c(), max_level=calculateLevel(build)+1, cooling=0.9){
   number_new_feats = calculateNumberOfNewFeats(build)
   if(number_new_feats$total > 0){
-    min_feats_tc = 1
-    max_feats_tc = 0
+    feat_types = c(rep("Fighter", number_new_feats$fighter), rep("Regular", number_new_feats$regular))
+    for(i in 1:number_new_feats$total){
+      build = selectFeat(build, i, feat_types[i])
+    }
     
-    ###
-    # Fighter Feats
-    ###
-    min_feats_tc = min_feats_tc + max_feats_tc
-    max_feats_tc = max_feats_tc + number_new_feats$fighter
-    if(number_new_feats$fighter > 0){ for(i in min_feats_tc:max_feats_tc){ build = selectFeat(build, i, "fighter") } }
     
-    ###
-    # Regular Feats
-    ###
-    min_feats_tc = min_feats_tc + max_feats_tc
-    max_feats_tc = max_feats_tc + number_new_feats$regular
-    if(number_new_feats$regular > 0){ for(i in min_feats_tc:max_feats_tc){ build = selectFeat(build, i, "regular") } }
+    # min_feats_tc = 1
+    # max_feats_tc = 0
+    # 
+    # ###
+    # # Fighter Feats
+    # ###
+    # min_feats_tc = min_feats_tc + max_feats_tc
+    # max_feats_tc = max_feats_tc + number_new_feats$fighter
+    # if(number_new_feats$fighter > 0){ for(i in min_feats_tc:max_feats_tc){ build = selectFeat(build, i, "Fighter") } }
+    # 
+    # ###
+    # # Regular Feats
+    # ###
+    # min_feats_tc = min_feats_tc + max_feats_tc
+    # max_feats_tc = max_feats_tc + number_new_feats$regular
+    # if(number_new_feats$regular > 0){ for(i in min_feats_tc:max_feats_tc){ build = selectFeat(build, i, "Regular") } }
   } else {
     build$potential_feats[[calculateLevel(build)]] = list()
   }
@@ -420,7 +474,9 @@ delevel = function(build, avail_classes, cooling){
         build$potential_feats[[calculateLevel(build)]] = NULL
         build$class[calculateLevel(build)]             = NA
       } else {
-        for(i in length(build$potential_feats[[calculateLevel(build)]]):number_new_feats$total){ build = selectFeat(build, i) } # Relevel
+        #  build$feat_types[[calculateLevel(build)]][i])
+        feat_types = c(rep("Fighter", number_new_feats$fighter), rep("Regular", number_new_feats$regular))
+        for(i in length(build$potential_feats[[calculateLevel(build)]]):number_new_feats$total){ build = selectFeat(build, i, feat_types[i]) } # Relevel
         return(build)
       }
     }
@@ -440,7 +496,7 @@ delevel = function(build, avail_classes, cooling){
   return(build)
 }
 
-prereq_feats = c("Dodge", "CE", "WF(Kukri)", "Feint")
+prereq_feats = c("Dodge", "Combat Expertise", "Weapon Focus (Kukri)", "Feint")
 
 prereq_bonus = function(feats){
   number_of_prereq_feats = length(which(feats %in% prereq_feats))
@@ -453,35 +509,40 @@ multiclassPenalty = function(classes){
   return(sum(!is.na(class_names))* 0.001)
 }
 
+g_aveDamageDice = function(dice, sides){ return((dice + dice*sides)/2) }
+
 calculateDamage = function(build, burst=T){
-  character_feats = unlist(build$feats)
   damage = 0
   crit_chance = 1
+  crit_chance_multiplier = 1
   crit_multiplier = 2
-  damage = damage + 7/2 # Kama Base Damage
-  damage = damage + 4 # Enhancement Bonust
+  postCrit_damage = 0
   
-  if("Deadly_defense" %in% character_feats) damage = damage + 5/2
-  if("CombatInsight" %in% character_feats) damage = damage + floor((starting_intelligence - 10) / 2)
-  if("WS" %in% character_feats) damage = damage + 1
-  if("GWS" %in% character_feats) damage = damage + 1
-  if("EWS" %in% character_feats) damage = damage + 4
-  if("WeaponMastery" %in% character_feats) damage = damage + 2
-  if(g_classLevel(build, "swashbuckler") >= 5) damage = damage + floor((starting_intelligence - 10) / 2)
-  if(g_classLevel(build, "dervish") == 10) damage = damage + 14/2
-  if(g_classLevel(build, "weapon_master") >= 5) crit_multiplier = crit_multiplier + 1
-  if(g_classLevel(build, "weapon_master") >= 7) crit_chance = crit_chance + 2
-  if("IC" %in% character_feats) crit_chance = crit_chance * 2
+  damage = damage + g_aveDamageDice(1, 6) # Kama Base Damage
+  damage = damage + 4 # Enhancement Bonus
+  damage = damage + g_stat_mod(build, "Strength")
   
-  if(burst){
-    damage = damage + ((g_classLevel(build, "dervish") - 1) / 2) + 1
-    if("EpicCharge" %in% character_feats
-       & "PowerfulCharge" %in% character_feats) damage = damage + 9/2
+  for(feat_n in unique(g_feats(build))){
+    if(!is.null(feats_av[[feat_n]][["damage"]])){
+      damage = damage + feats_av[[feat_n]][["damage"]](build, burst)
+    }
+    if(!is.null(feats_av[[feat_n]][["postCrit_damage"]])){
+      postCrit_damage = postCrit_damage + feats_av[[feat_n]][["postCrit_damage"]](build, burst)
+    }
+    if(!is.null(feats_av[[feat_n]][["crit_chance"]])){
+      crit_chance = crit_chance + feats_av[[feat_n]][["crit_chance"]](build, burst)
+    }
+    if(!is.null(feats_av[[feat_n]][["crit_chance_multiplier"]])){
+      crit_chance_multiplier = crit_chance_multiplier + feats_av[[feat_n]][["crit_chance_multiplier"]](build, burst)
+    }
+    if(!is.null(feats_av[[feat_n]][["crit_multiplier"]])){
+      crit_multiplier = crit_multiplier + feats_av[[feat_n]][["crit_multiplier"]](build, burst)
+    }
   }
-  
-  damage = (crit_multiplier * damage * crit_chance + damage * (20-crit_chance)) / 20
-  damage = damage + 6 * floor((g_classLevel(build, "invis_blade") + 1) / 2)
-  # damage = damage + 5/2 # Fire weapon
+
+  crit_damage = (damage * crit_chance * crit_chance_multiplier * crit_multiplier) / 20
+  noncrit_damage = (damage * (20-crit_chance)) / 20
+  total_damage = crit_damage + noncrit_damage + postCrit_damage
   
   return(damage)
 }
@@ -513,7 +574,7 @@ evaluateBuild = function(build, burst_weight=0.5, level=30, max_level=30){
   }
   
   score = calculateScore(damage_per_level) - multiclassPenalty(build$class[1:level]) + prereq_bonus(unlist(build$feats[1:level]))
-
+  
   return(list(damage = damage_per_level,
               burst = burst_per_level,
               sustain = susta_per_level,
@@ -521,12 +582,8 @@ evaluateBuild = function(build, burst_weight=0.5, level=30, max_level=30){
 }
 
 
-blank_prefix_build = list(class = rep(NA, 30),
-                          feats = list(),
-                          potential_classes = list(),
-                          potential_feats = list())
+
 build_character = function(avail_classes, max_level = 30, level_warp = 1, burst_weight=0.5, is.final=T, prefix_build = blank_prefix_build, monoclass_depth=5, cooling=1, report=T, preferred_classes=c()){
-  #if(is.final) ptm = proc.time()
   builds_analyzed = 0
   
   best_build = blank_prefix_build
@@ -554,13 +611,12 @@ build_character = function(avail_classes, max_level = 30, level_warp = 1, burst_
   max_level_reached = F
   while(length(build$potential_classes) != 0 || start){
     start = F
-
+    
     ################################################################
     # Level up the character to 30 so I can properly assess damage
     ##################################################################
     while(calculateLevel(build) < max_level){
       if( max_level_reached & calculateLevel(build) > 0) {
-        #cat(evaluateBuild(build)$score, "?", (cooling[calculateLevel(build)] * evaluateBuild(best_build, level=calculateLevel(build))$score), ":", build$class[!is.na(build$class)], "\n")
         if(evaluateBuild(build)$score <= (cooling * evaluateBuild(best_build, level=calculateLevel(build))$score) ) { break; }
       }
       
@@ -647,9 +703,9 @@ build_character = function(avail_classes, max_level = 30, level_warp = 1, burst_
   #     }
   #   }
   # }
-
-  if(report) cat(best_build$class[!is.na(best_build$class)], "\n")
-
+  
+  if(report) cat(calculateLevel(best_build), ":", best_build$class[!is.na(best_build$class)], "\n")
+  
   #cat("level:", calculateLevel(best_build), "level_warp:", level_warp, "prefix_level:", calculateLevel(best_build) - level_warp,"\n")
   best_build = createPrefixBuild(best_build, level_warp, is.final)
   
@@ -659,10 +715,10 @@ build_character = function(avail_classes, max_level = 30, level_warp = 1, burst_
 createPrefixBuild = function(build, levels_to_lose, is.final){
   build$potential_classes = lapply(build$potential_classes, function(x) x = character(0))
   build$potential_feats   = lapply(build$potential_feats, function(x) x = list())
-
+  
   if(calculateLevel(build) > levels_to_lose & !is.final & levels_to_lose != 0){
     blankRange = (calculateLevel(build) - levels_to_lose + 1):30
-
+    
     build$feats[blankRange] = NULL
     build$potential_feats[blankRange] = NULL
     build$potential_classes[blankRange] = NULL
@@ -672,13 +728,26 @@ createPrefixBuild = function(build, levels_to_lose, is.final){
   return(build)
 }
 
+blank_prefix_build = list(class = rep(NA, 30),
+                          feats = list(),
+                          feat_types = list(),
+                          potential_classes = list(),
+                          potential_feats = list(),
+                          weapon = "Kama",
+                          stats=list("Strength"=10,
+                                     "Dexterity"=20,
+                                     "Constitution"=10,
+                                     "Intelligence"=16,
+                                     "Wisdom"=10,
+                                     "Charisma"=8),
+                          stat_increase="Dexterity")
 is.final = T
 max_level = 30
-level_warp = 3
+level_warp = 1
 burst_weight= 0.25
 monoclass_depth = 0
 cooling = 0.9
-avail_classes = list("monk"=30, "dervish"=10, "invis_blade"=5, "fighter"=30, "weapon_master"=0, "swashbuckler"=5)
+avail_classes = list("Monk"=30, "Dervish"=10, "Invisible Blade"=5, "Fighter"=30, "Swashbuckler"=5)
 windmaster_char = build_character(avail_classes,
                                   max_level = max_level,
                                   level_warp = level_warp,
