@@ -1,5 +1,6 @@
 source("feats.r")
 source("class.r")
+source("spells.r")
 
 createDebugOptimalBuild = function(){
   build = blank_prefix_build
@@ -11,6 +12,73 @@ createDebugOptimalBuild = function(){
                   "Dervish", "Dervish", "Dervish", "Dervish", "Dervish")
   build = populateFeats(avail_classes, build, cooling, options)
   return(build)
+}
+
+g_casterLevel = function(build, options, class_n, feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  casterLevel = g_casterProgression(build, options, class_n, feat_list)
+  
+  return(casterLevel)
+}
+
+g_casterProgression = function(build, options, class_n, feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  casterProgression = g_classLevel(build, class_n)
+  for(feat_n in feat_list){
+    if(!is.null(feats_av[[feat_n]][["caster_progression"]])
+       & !is.null(feats_av[[feat_n]][["class_that_progresses"]])
+       & !is.null(feats_av[[feat_n]][["class_to_progresses"]])){
+      if(feats_av[[feat_n]][["class_to_progresses"]] == class_n){
+        casterProgression = casterProgression + sum(feats_av[[feat_n]][["caster_progression"]] <= g_classLevel(build, feats_av[[feat_n]][["class_that_progresses"]]))
+      }
+    }
+  }
+  return(casterProgression)
+}
+
+g_bonusSpellSlotsByLevel = function(stat_mod, level){
+  return(max(floor((stat_mod - level)/4)+1, 0))
+}
+
+g_bonusSpellSlots = function(build, options, class_n, feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  if(is.null(cls_av[[class_n]][["spell_stat"]])) return(c())
+  spell_stat = cls_av[[class_n]][["spell_stat"]]
+  
+  stat_mod = g_stat_mod(build, spell_stat, feat_list)
+  
+  bonus_spells = rep(0, 10)
+  for(i in 2:10){
+    bonus_spells[i] = g_bonusSpellSlotsByLevel(stat_mod, i-1)
+  }
+  return(bonus_spells)
+}
+
+g_spellslots = function(build, options, class_n, feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  class_level = g_classLevel(build, class_n)
+  spell_slots = cls_av[[class_n]][["spells"]][[class_level]] 
+  spell_slots = spell_slots + g_bonusSpellSlots(build, options, class_n, feat_list)[1:length(spell_slots)]
+  return(spell_slots)
+}
+
+g_spells = function(build, options, class_n, feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  if(is.null(build$spell_build)) return(c())
+  if(is.null(cls_av[[class_n]][["spell_build"]])) return(c())
+  if(is.null(cls_av[[class_n]][["spell_build"]][[build$spell_build]])) return(c())
+  
+  spell_slots = g_spellslots(build, options, class_n)
+  spell_list = c()
+  if(length(spell_slots) == 0) return(c())
+  for(i in (1:length(spell_slots))){
+    if( length(cls_av[[class_n]][["spell_build"]][[build$spell_build]]) < i ) break
+    if( is.null(cls_av[[class_n]][["spell_build"]][[build$spell_build]][[i]]) ) next
+    spell_list_level_i = cls_av[[class_n]][["spell_build"]][[build$spell_build]][[i]]
+    spell_list = c(spell_list, spell_list_level_i[1:min(length(spell_list_level_i), spell_slots[i])])
+  }
+  
+  return(spell_list)
 }
 
 calculateAverageDamage = function(attacks, damage, defense){
@@ -190,7 +258,7 @@ preferredClassesUnmet = function(build, preferred_classes){
 }
 
 CLASS_EXPLORATION_DEPTH = 3
-calculateQualifiedClasses = function(avail_classes, build, preferred_classes=list(), max_level=calculateLevel(build)+1, cooling=0.9, options=list()){
+calculateQualifiedClasses = function(avail_classes, build, preferred_classes=list(), prestigeSearch="", max_level=calculateLevel(build)+1, cooling=0.9, options=list()){
   qual_class = c()
   c_feats = g_feats(build)
   
@@ -209,7 +277,9 @@ calculateQualifiedClasses = function(avail_classes, build, preferred_classes=lis
   class_table = class_table[names(class_table) != "any"]
   
   ## If I already have 4 classes, I cannot take any more
-  if(length(class_table) == 4)               { qual_class = qual_class[qual_class %in% build$class] }
+  max_classes = 4
+  if(prestigeSearch != "" & !(prestigeSearch %in% qual_class)) max_classes = 3 
+  if(length(class_table) == max_classes)               { qual_class = qual_class[qual_class %in% build$class] }
   ## If I am above level 20, the 3b20 rule will not allow me to take more
   if(calculateLevel(build) >= 20){ qual_class = qual_class[qual_class %in% build$class] }
   
@@ -383,10 +453,10 @@ g_stats = function(build, stats, feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
   base_stats = build$stats[stats]
   for(stat_n in names(base_stats)){
-    base_stats[[stat_n]] = base_stats[[stat_n]] + sum(feat_list %in% feats_to_increase_stats[[stat_n]])
+    base_stats[stat_n] = base_stats[stat_n] + sum(feat_list %in% feats_to_increase_stats[[stat_n]])
   }
   
-  if(!is.null(build$stat_increase)){ base_stats[[build$stat_increase]] = base_stats[[build$stat_increase]] + floor(calculateLevel(build) / 4) }
+  if(!is.null(build$stat_increase)){ base_stats[build$stat_increase] = base_stats[build$stat_increase] + floor(calculateLevel(build) / 4) }
   return(unlist(base_stats[stats]))
 }
 
@@ -550,8 +620,25 @@ calculateAttacks = function(build, options){
   return(attacks)
 }
 
-g_stat_mod = function(build, stat, feat_list=NULL){
-  return(floor((g_stats(build, stat, feat_list) - 10) / 2))
+g_stat_enhancement_mod = function(build, stat, feat_list=NULL, useSpells=FALSE){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  
+  equipment_bonus = build$equipment_stats
+  enhancement_bonus = equipment_bonus
+  if(useSpells){
+    for(feat_n in feat_list){
+      if(is.null(feats_av[[feat_n]])) next
+      if(is.null(feats_av[[feat_n]]$enhancement_bonus)) next
+      spell_bonus = feats_av[[feat_n]]$enhancement_bonus(build, options, feat_list, equipment_bonus)
+      enhancement_bonus = pmax(enhancement_bonus, spell_bonus)
+    }
+  }
+  return(enhancement_bonus)
+}
+g_stat_mod = function(build, stat, feat_list=NULL, useSpells=FALSE){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  stats = g_stats(build, stat, feat_list) + unlist(build$equipment_stats[stat])
+  return(floor((stats - 10) / 2))
 }
 
 calculateScore = function(damage_per_level){ return(sum(1:30 * damage_per_level, na.rm=T)) }
@@ -574,11 +661,11 @@ outputCharacter = function(build, options=list()){
   cat("\n\n")
 }
 
-levelClass = function(build, avail_classes, preferred_classes=list(), max_level=calculateLevel(build)+1, cooling=0.9, options=list()){
+levelClass = function(build, avail_classes, preferred_classes=list(), prestigeSearch="", max_level=calculateLevel(build)+1, cooling=0.9, options=list()){
   cur_lv = calculateLevel(build)
   global_class_selections <<- global_class_selections + 1
   if(length(build$potential_classes) < cur_lv+1){
-    build$potential_classes[[cur_lv+1]] = calculateQualifiedClasses(avail_classes, build, preferred_classes, max_level, cooling, options)
+    build$potential_classes[[cur_lv+1]] = calculateQualifiedClasses(avail_classes, build, preferred_classes, prestigeSearch, max_level, cooling, options)
   }
   class_index = sample(1:length( build$potential_classes[[cur_lv+1]] ), 1)
   class_name = build$potential_classes[[cur_lv+1]][class_index]
@@ -628,7 +715,7 @@ levelFeat = function(build, avail_classes, preferred_classes=list(), prestigeSea
 }
 
 levelup = function(build, avail_classes, preferred_classes=list(), prestigeSearch="", max_level=calculateLevel(build)+1, cooling=0.9, options=list()){
-  build = levelClass(build, avail_classes, preferred_classes, max_level, cooling, options)
+  build = levelClass(build, avail_classes, preferred_classes, prestigeSearch, max_level, cooling, options)
   build = levelFeat(build, avail_classes, preferred_classes, prestigeSearch, max_level, cooling)
   return(build)
 }
@@ -696,7 +783,7 @@ multiclassPenalty = function(build){
   if(!is.null(build$favored_class)){ class_levels = class_levels[!names(class_levels) %in% build$favored_class] }
   class_levels = class_levels[order(class_levels, decreasing=T)]
   if(!is.null(build$favored_class)){
-    if(build$favored_class == "any" & length(class_levels) > 0) class_levels = class_levels[-1]
+    if(build$favored_class == "Any" & length(class_levels) > 0) class_levels = class_levels[-1]
   }
   if(length(class_levels) > 1){
     penalties = sum(class_levels[1:(length(class_levels)-1)] - class_levels[2:length(class_levels)] > 1)
@@ -725,6 +812,9 @@ calculateDamage = function(build, options){
   damage = damage + (g_stat_mod(build, "Strength", feat_list) * damage_multiplier)
   
   for(feat_n in feat_list){
+    global_build <<- build
+    global_damage <<- damage
+    global_feat_n <<- feat_n
     if(!is.null(feats_av[[feat_n]][["damage"]])){
       damage = damage + feats_av[[feat_n]][["damage"]](build, options, feat_list)
     }
@@ -992,7 +1082,7 @@ build_character = function(avail_classes,
       qualified_classes = calculateQualifiedClasses(avail_classes, base_class_build, cooling=0, max_level=0)
       if(class_n %in% c(qualified_classes, "any")) next
       
-      depth_to_search = max(min(length(g_prestigeFeatRequirements(base_class_build, class_n)) * 4, prestige_depth, calculateLevel(best_build)), level_warp+1)
+      depth_to_search = max(min(prestige_depth, calculateLevel(best_build)), level_warp+1)
       ##########################################
       # Start descending
       ##########################################
@@ -1074,7 +1164,7 @@ createPrefixBuild = function(build, levels_to_lose, is.final){
   return(build)
 }
 
-Rprof("CO_profiling.out")
+# Rprof("CO_profiling.out")
 
 
 global_feat_selections = 0
@@ -1098,26 +1188,34 @@ blank_prefix_build = list(class = rep(NA, 30),
                                         damage_type="Slashing",
                                         enhancement_bonus=4,
                                         attack_bonus=0),
-                          stats=list("Strength"=25,
-                                     "Dexterity"=25,
+                          stats=c("Strength"=8,
+                                     "Dexterity"=20,
                                      "Constitution"=10,
-                                     "Intelligence"=25,
+                                     "Intelligence"=16,
                                      "Wisdom"=10,
                                      "Charisma"=10),
+                          equipment_stats=c("Strength"=2,
+                                               "Dexterity"=2,
+                                               "Constitution"=2,
+                                               "Intelligence"=2,
+                                               "Wisdom"=2,
+                                               "Charisma"=2),
                           stat_increase="Charisma",
                           favored_class="Fighter",
-                          isHuman=T)
+                          spell_build="Offensive Melee",
+                          isHuman=F)
 
 is.final = T
-max_level = 15
-level_warp = 2
-monoclass_depth = 5
-cooling = 0.95
-prestige_depth = 5
+max_level = 30
+level_warp = 1
+monoclass_depth = 3
+cooling = 0.9
+prestige_depth = 3
 options=list(allow_burst=T,
+             allow_spells=T,
              feat_adjustment=0.0001,
              feat_multiplier=0)
-avail_classes = list("Monk"=10, "Dervish"=10, "Invisible Blade"=5, "Fighter"=10, "Swashbuckler"=10, "Tempest"=5, "Ranger"=30)
+avail_classes = list("Monk"=11, "Dervish"=10, "Invisible Blade"=5, "Fighter"=0, "Swashbuckler"=0, "Tempest"=5, "Ranger"=30, "Whirling Dervish"=10)
 windmaster_char = build_character(avail_classes,
                                   max_level = max_level,
                                   level_warp = level_warp,
@@ -1126,8 +1224,8 @@ windmaster_char = build_character(avail_classes,
                                   options = options,
                                   prestige_depth = prestige_depth)
 
-Rprof(NULL)
-summaryRprof("CO_profiling.out")
+# Rprof(NULL)
+# summaryRprof("CO_profiling.out")
 
 outputCharacter(windmaster_char, options)
 
