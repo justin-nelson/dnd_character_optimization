@@ -142,8 +142,8 @@ feats_av[["Weapon Finesse"]] = list(feat_type=c("Regular", "Fighter"),
                                     prereq_BAB=1,
                                     attack_bonus=function(build, options, feat_list){ 
                                       if(build$weapon$size != "Light" | build$weapon$name != "Rapier") return(0)
-                                      if(build$stats[["Dexterity"]] > build$stats[["Strength"]]){
-                                        return(g_stat_mod(build, "Dexterity", feat_list) - g_stat_mod(build, "Strength", feat_list))
+                                      if(g_stat_mod(build, "Dexterity", feat_list, TRUE) > g_stat_mod(build, "Strength", feat_list, TRUE)){
+                                        return(g_stat_mod(build, "Dexterity", feat_list, TRUE) - g_stat_mod(build, "Strength", feat_list, TRUE))
                                       }
                                       return(0)
                                     })
@@ -192,15 +192,15 @@ feats_av[["Combat Insight"]] = list(feat_type=c("Regular", "Fighter"),
                                     prereq_level=21,
                                     prereq_feats=c("Combat Expertise", "Epic Prowess"),
                                     damage=function(build, options, feat_list){
-                                      if(build$stats[["Intelligence"]] > build$stats[["Strength"]]){
-                                        return(g_stat_mod(build, "Intelligence", feat_list) - g_stat_mod(build, "Strength", feat_list))
+                                      if(g_stat_mod(build, "Intelligence", feat_list, TRUE) > g_stat_mod(build, "Strength", feat_list, TRUE)){
+                                        return(g_stat_mod(build, "Intelligence", feat_list, TRUE) - g_stat_mod(build, "Strength", feat_list, TRUE))
                                       }
                                       return(0)
                                     })
 feats_av[["Insightful Strike"]] = list(feat_type=c(),
                                        damage=function(build, options, feat_list){
-                                         if(g_stat_mod(build, "Intelligence", feat_list) > 0){
-                                           return(g_stat_mod(build, "Intelligence", feat_list))
+                                         if(g_stat_mod(build, "Intelligence", feat_list, TRUE) > 0){
+                                           return(g_stat_mod(build, "Intelligence", feat_list, TRUE))
                                          }
                                          return(0)
                                        })
@@ -217,7 +217,7 @@ feats_av[["Dervish Dance"]] = list(feat_type=c(),
                                      if(is.null(options$allow_burst)) return(0)
                                      if(!options$allow_burst) return(0)
                                      bonus = floor((g_classLevel(build, "Dervish")+1)/2)
-                                     boost_ratio = min((bonus * g_skillMaxes(build, "perform") / 20) / (calculateLevel(build) * FIGHTING_RATIO), 1)
+                                     boost_ratio = min((bonus * g_skillMaxes(build, "Perform") / 20) / (calculateLevel(build) * FIGHTING_RATIO), 1)
                                      return(bonus * boost_ratio)
                                    })
 
@@ -234,21 +234,39 @@ feats_av[["Bleeding Wound I"]] = list(feat_type=c(),
                                         if(is.null(options$allow_burst)) return(0)
                                         if(!options$allow_burst) return(0)
                                         if(build$weapon$size != "Light") return(0)
-                                        return(6 * FEINTING_RATIO)
+                                        bluff_skill = g_skillMaxes(build, "Bluff") + g_stat_mod(build, "Charisma", feat_list, TRUE)
+                                        if("Feint Mastery" %in% feat_list) bluff_skill = bluff_skill + 5
+                                        BLUFF_RATIO = max(min((bluff_skill - calculateLevel(build) + 10) / 20, 0.95), 0.05)
+                                        SNEAK_RATIO = 0.2
+                                        if("Hide in Plain Sight" %in% feat_list){ SNEAK_RATIO = 1 }
+                                        SA_RATIO = max(BLUFF_RATIO, SNEAK_RATIO)
+                                        return(6 * SA_RATIO)
                                       })
 feats_av[["Bleeding Wound II"]] = list(feat_type=c(),
                                        postCrit_damage=function(build, options, feat_list){
                                          if(is.null(options$allow_burst)) return(0)
                                          if(!options$allow_burst) return(0)
                                          if(build$weapon$size != "Light") return(0)
-                                         return(6 * FEINTING_RATIO)
+                                         bluff_skill = g_skillMaxes(build, "Bluff") + g_stat_mod(build, "Charisma", feat_list, TRUE)
+                                         if("Feint Mastery" %in% feat_list) bluff_skill = bluff_skill + 5
+                                         BLUFF_RATIO = max(min((bluff_skill - calculateLevel(build) + 10) / 20, 0.95), 0.05)
+                                         SNEAK_RATIO = 0.2
+                                         if("Hide in Plain Sight" %in% feat_list){ SNEAK_RATIO = 1 }
+                                         SA_RATIO = max(BLUFF_RATIO, SNEAK_RATIO)
+                                         return(6 * SA_RATIO)
                                        })
 feats_av[["Bleeding Wound III"]] = list(feat_type=c(),
                                         postCrit_damage=function(build, options, feat_list){
                                           if(is.null(options$allow_burst)) return(0)
                                           if(!options$allow_burst) return(0)
                                           if(build$weapon$size != "Light") return(0)
-                                          return(6 * FEINTING_RATIO)
+                                          bluff_skill = g_skillMaxes(build, "Bluff") + g_stat_mod(build, "Charisma", feat_list, TRUE)
+                                          if("Feint Mastery" %in% feat_list) bluff_skill = bluff_skill + 5
+                                          BLUFF_RATIO = max(min((bluff_skill - calculateLevel(build) + 10) / 20, 0.95), 0.05)
+                                          SNEAK_RATIO = 0.2
+                                          if("Hide in Plain Sight" %in% feat_list){ SNEAK_RATIO = 1 }
+                                          SA_RATIO = max(BLUFF_RATIO, SNEAK_RATIO)
+                                          return(6 * SA_RATIO)
                                         })
 feats_av[["Weapon Focus (Slashing)"]] = list(feat_type=c(),
                                              prereq_feats=c("Weapon Focus (Kukri)", "Weapon Focus (Kama)"))
@@ -308,3 +326,139 @@ feats_av[["Great Strength 5"]] = list(feat_type=c("Regular"),
                                        prereq_level=21,
                                        prereq_feats=c("Great Dexterity 4"),
                                        plusStrength=1)
+
+feats_av[["Sneak Attack +1d6"]] = list(feat_type=c(),
+                                        damage=function(build, options, feat_list){
+                                          if(is.null(options$allow_burst)) return(0)
+                                          if(!options$allow_burst) return(0)
+                                          bluff_skill = g_skillMaxes(build, "Bluff") + g_stat_mod(build, "Charisma", feat_list, TRUE)
+                                          if("Feint Mastery" %in% feat_list) bluff_skill = bluff_skill + 5
+                                          BLUFF_RATIO = max(min((bluff_skill - calculateLevel(build) + 10) / 20, 0.95), 0.05)
+                                          SNEAK_RATIO = 0.2
+                                          if("Hide in Plain Sight" %in% feat_list){ SNEAK_RATIO = 1 }
+                                          SA_RATIO = max(BLUFF_RATIO, SNEAK_RATIO)
+                                          return(g_aveDamageDice(1,6) * SA_RATIO)
+                                        })
+feats_av[["Sneak Attack +2d6"]] = list(feat_type=c(),
+                                       damage=function(build, options, feat_list){
+                                         if(is.null(options$allow_burst)) return(0)
+                                         if(!options$allow_burst) return(0)
+                                         bluff_skill = g_skillMaxes(build, "Bluff") + g_stat_mod(build, "Charisma", feat_list, TRUE)
+                                         if("Feint Mastery" %in% feat_list) bluff_skill = bluff_skill + 5
+                                         BLUFF_RATIO = max(min((bluff_skill - calculateLevel(build) + 10) / 20, 0.95), 0.05)
+                                         SNEAK_RATIO = 0.2
+                                         if("Hide in Plain Sight" %in% feat_list){ SNEAK_RATIO = 1 }
+                                         SA_RATIO = max(BLUFF_RATIO, SNEAK_RATIO)
+                                         return(g_aveDamageDice(1,6) * SA_RATIO)
+                                       })
+feats_av[["Sneak Attack +3d6"]] = list(feat_type=c(),
+                                       damage=function(build, options, feat_list){
+                                         if(is.null(options$allow_burst)) return(0)
+                                         if(!options$allow_burst) return(0)
+                                         bluff_skill = g_skillMaxes(build, "Bluff") + g_stat_mod(build, "Charisma", feat_list, TRUE)
+                                         if("Feint Mastery" %in% feat_list) bluff_skill = bluff_skill + 5
+                                         BLUFF_RATIO = max(min((bluff_skill - calculateLevel(build) + 10) / 20, 0.95), 0.05)
+                                         SNEAK_RATIO = 0.2
+                                         if("Hide in Plain Sight" %in% feat_list){ SNEAK_RATIO = 1 }
+                                         SA_RATIO = max(BLUFF_RATIO, SNEAK_RATIO)
+                                         return(g_aveDamageDice(1,6) * SA_RATIO)
+                                       })
+feats_av[["Critical Sense 1"]] = list(feat_type=c(),
+                                       attack_bonus=function(build, options, feat_list){ 
+                                         return(1)
+                                       })
+feats_av[["Critical Sense 2"]] = list(feat_type=c(),
+                                      attack_bonus=function(build, options, feat_list){ 
+                                        return(1)
+                                      })
+feats_av[["Ranger Spellcasting"]] = list(feat_type=c(),
+                                         damage=function(build, options, feat_list){
+                                           if(is.null(options$allow_spells)) return(0)
+                                           if(!options$allow_spells) return(0)
+                                           
+                                           spell_list = g_spells(build, options, "Ranger", feat_list)
+                                           uniq_spell_list = unique(spell_list)
+                                           damage = 0
+                                           for(spell_n in uniq_spell_list){
+                                             if(is.null(spells_av[[spell_n]])) next
+                                             if(is.null(spells_av[[spell_n]]$damage)) next
+                                             time = spells_av[[spell_n]]$time(build, options, feat_list, "Ranger") * sum(spell_list == spell_n, na.rm=T)
+                                             DURATION_RATIO = min(time / (6* calculateLevel(build)), 1)
+                                             damage = damage + spells_av[[spell_n]]$damage(build, options, feat_list, "Ranger") * DURATION_RATIO
+                                           }
+                                           
+                                           return(damage)
+                                         },
+                                         enhancement_bonus=function(build, options, feat_list, stable_bonus){
+                                           if(is.null(options$allow_spells)) return(0)
+                                           if(!options$allow_spells) return(0)
+                                           
+                                           spell_list = g_spells(build, options, "Ranger", feat_list)
+                                           uniq_spell_list = unique(spell_list)
+                                           
+                                           enhancement_bonus = stable_bonus
+                                           
+                                           for(spell_n in uniq_spell_list){
+                                             if(is.null(spells_av[[spell_n]])) next
+                                             if(is.null(spells_av[[spell_n]]$enhancement_bonus)) next
+                                             
+                                             time = spells_av[[spell_n]]$time(build, options, feat_list, "Ranger") * sum(spell_list == spell_n, na.rm=T)
+                                             DURATION_RATIO = min(time / (6* calculateLevel(build)), 1)
+                                             
+                                             spell_EB = spells_av[[spell_n]]$enhancement_bonus(build, options, feat_list, "Ranger")
+                                             spell_EB = enhancement_bonus + (enhancement_bonus - spell_EB) * DURATION_RATIO
+                                             
+                                             enhancement_bonus = pmax(enhancement_bonus, spell_EB)
+                                           }
+
+                                           return(round(enhancement_bonus))
+                                         })
+feats_av[["Favored Enemy I"]] = list(feat_type=c(),
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                        return(1)
+                                      })
+feats_av[["Favored Enemy II"]] = list(feat_type=c(),
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(1)
+                                     })
+feats_av[["Favored Enemy III"]] = list(feat_type=c(),
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(1)
+                                     })
+feats_av[["Favored Enemy IV"]] = list(feat_type=c(),
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(1)
+                                     })
+feats_av[["Favored Enemy V"]] = list(feat_type=c(),
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(1)
+                                     })
+feats_av[["Favored Enemy VI"]] = list(feat_type=c(),
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(1)
+                                     })
+feats_av[["Bane of Enemies"]] = list(feat_type=c("Regular"),
+                                      prereq_level=21,
+                                     prereq_class=list("Ranger"=21),
+                                     attack_bonus=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(2)
+                                     },
+                                     damage=function(build, options, feat_list){ 
+                                       if(is.null(options$allow_favoredEnemy)) return(0)
+                                       if(!options$allow_favoredEnemy) return(0)
+                                       return(g_aveDamageDice(2,6))
+                                     })
