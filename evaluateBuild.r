@@ -1,18 +1,10 @@
-evaluateBuild = function(build, options=list(), level=NULL, levels_to_evaluate=NULL, base_build=0){
-  offensiveMelee_info = evaluateBuild_offensiveMelee(build, options, level, levels_to_evaluate)
-  
-  score = offensiveMelee_info$score
-  #if(score < base_build) score = base_build
-  return(list(damage = offensiveMelee_info$damage,
-              score = score - base_build))
-}
-
-evaluateBuild_offensiveMelee = function(build, options=list(), level=NULL, levels_to_evaluate=NULL){
+evaluateBuild = function(build, options=list(), level=NULL, levels_to_evaluate=NULL){
   global_evaluations <<- global_evaluations + 1
-  
-  ####
+  global_build <<- build
+
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # Here is a bunch of code to make sure that levels and levels_to_evaluate are feasible
-  ####
+  #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   if(is.null(level)) level = calculateLevel(build)
   if(is.null(levels_to_evaluate)) levels_to_evaluate = calculateLevel(build)
   if(level < 1) level = 1
@@ -20,21 +12,26 @@ evaluateBuild_offensiveMelee = function(build, options=list(), level=NULL, level
   if(levels_to_evaluate > level) levels_to_evaluate = level
   
   min_lv_to_eval = level - levels_to_evaluate + 1
-  
+  offense_per_level = rep(0, level)
+  defense_per_level = rep(0, level)
+  score_per_level = rep(0, level)
   damage_per_level = rep(0, level)
   multiclass_penalty = rep(1, level)
   
   level_build = createPrefixBuild(build, calculateLevel(build) - level, F)
-  
   for(i in min_lv_to_eval:level){
     cur_level_build = createPrefixBuild(level_build, calculateLevel(level_build) - i, F)
-    damage_rolls = calculateDamage(cur_level_build, options)
-    attack_rolls = calculateAttacks(cur_level_build, options)
+    feat_list = g_feats(cur_level_build)
     
-    defense = i + 10
+    defensiveMelee_info = evaluateBuild_defensiveMelee(cur_level_build, options, feat_list)
+    options$currentArmorType = defensiveMelee_info$armorType
+    offensiveMelee_info = evaluateBuild_offensiveMelee(cur_level_build, options, feat_list)
     
-    damage_dealt       = calculateAverageDamage(attack_rolls, damage_rolls, defense)
-    damage_per_level[i] = damage_dealt
+    
+    offense_per_level[i] = offensiveMelee_info$score
+    defense_per_level[i] = defensiveMelee_info$score
+    
+    damage_per_level[i] = offensiveMelee_info$score
     
     if(i < level){
       multiclass_penalty[i] = multiclassPenalty(cur_level_build) 
@@ -42,21 +39,85 @@ evaluateBuild_offensiveMelee = function(build, options=list(), level=NULL, level
   }
   
   mc_pen_multiplier = sum(min_lv_to_eval:level * multiclass_penalty[min_lv_to_eval:level]) / sum(min_lv_to_eval:level)
+  offensive_score = sum(min_lv_to_eval:level * offense_per_level[min_lv_to_eval:level], na.rm=T) / sum(min_lv_to_eval:level)
+  defensive_score = sum(min_lv_to_eval:level * defense_per_level[min_lv_to_eval:level], na.rm=T) / sum(min_lv_to_eval:level)
+  feat_multiplier = 1+(sum(unique(g_feats(build)) %in% g_featsInFeatType("Regular")) * options$feat_multiplier)
+  restTimer_rounds = calculateLevel(build) * 6
+  score = mc_pen_multiplier * feat_multiplier * offensive_score * min(defensive_score, restTimer_rounds)
   
-  score = sum(min_lv_to_eval:level * damage_per_level[min_lv_to_eval:level], na.rm=T) / sum(min_lv_to_eval:level) * mc_pen_multiplier
+  return(list(offensive_score = offense_per_level,
+              defensive_score = defense_per_level,
+              mc_penalty = mc_pen_multiplier,
+              feat_multiplier = feat_multiplier,
+              damage = damage_per_level,
+              score = score,
+              armorType = options$currentArmorType))
+}
+
+evaluateBuild_defensiveMelee = function(build, options=list(), feat_list=NULL){
+  MIN_ADJ = 0.00000001
+  level = calculateLevel(build)
+  enemy_attack_adjustment = 0
+  enemy_damage_adjustment = 0
+  if(!is.null(options$enemy_attack_adjustment)) enemy_attack_adjustment = options$enemy_attack_adjustment
+  if(!is.null(options$enemy_damage_adjustment)) enemy_damage_adjustment = options$enemy_damage_adjustment
+  if(is.null(feat_list)) feat_list = g_feats(build)
   
-  num_feats = sum(unique(g_feats(build)) %in% g_featsInFeatType("Regular"))
-  if(!is.null(options$feat_multiplier)){
-    multiplier = 1+(num_feats * options$feat_multiplier)
-    score = score * multiplier
+  enemy_BAB = level
+  enemy_TAB = level + enemy_attack_adjustment # Enemy Top Attack Bonus
+  enemy_numberAttacks = max(floor((enemy_BAB-1)/5)+1, 1)
+  enemy_attack_rolls = seq(from=enemy_TAB, to=enemy_TAB-5*(enemy_numberAttacks-1), by=-5)
+  enemy_damage_rolls = level + enemy_damage_adjustment
+  
+  AC_object = g_AC(build, options)
+  player_armorType = AC_object$armorType
+  player_AC = AC_object$AC
+  player_HP = g_HP(build, options, feat_list)
+  player_DR = g_DR(build, options, feat_list)
+  player_hitsAbsorbed = g_hitsAbsorbed(build, options, feat_list)
+  player_concealment = g_concealment(build, options, feat_list)
+  effective_hit_chance = g_chanceToHit(enemy_attack_rolls, player_AC)
+  
+  
+  damage_per_round = (1-player_concealment) * max(1, calculateAverageDamage(enemy_attack_rolls, enemy_damage_rolls - player_DR, player_AC))
+  rounds_absorbed = player_hitsAbsorbed / (sum(effective_hit_chance) * (1-player_concealment) + MIN_ADJ)
+  TTD = rounds_absorbed + player_HP / (damage_per_round + MIN_ADJ) # Time to Death
+  
+  return(list(score=TTD,
+              armorType=player_armorType))
+}
+
+evaluateBuild_offensiveMelee = function(build, options=list(), feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  enemy_defense_adjustment = 0
+  if(!is.null(options$enemy_defense_adjustment)) enemy_defense_adjustment = options$enemy_defense_adjustment
+  combat_ratio = 1
+  if(!is.null(options$combat_ratio)) combat_ratio = options$combat_ratio
+  
+  player_damage_rolls = calculateDamage(build, options)
+  player_attack_rolls = calculateAttacks(build, options)
+  
+  enemy_defense = calculateLevel(build) + 10 + enemy_defense_adjustment
+  
+  melee_damage = calculateAverageDamage(player_attack_rolls, player_damage_rolls, enemy_defense)
+  
+  fixed_damage = c()
+  for(feat_n in feat_list){
+    if(!is.null(feats_av[[feat_n]][["fixed_damage"]])){
+      fixed_damage = c(fixed_damage, feats_av[[feat_n]][["fixed_damage"]](build, options, feat_list))
+    }
   }
-  if(!is.null(options$feat_adjustment)){
-    adjustment = num_feats * options$feat_adjustment
-    score = score + adjustment
-  }
   
-  return(list(damage = damage_per_level,
-              score = score))
+  if(length(fixed_damage) > 0){
+    fixed_damage = fixed_damage[order(fixed_damage, decreasing=TRUE)]
+    fixed_damage = fixed_damage[fixed_damage > melee_damage]
+  }
+  rounds_in_rest = floor(calculateLevel(build) * 10 * combat_ratio)
+  if(length(fixed_damage) > rounds_in_rest) fixed_damage = fixed_damage[1:rounds_in_rest]
+  
+  damage = (sum(fixed_damage) + (rounds_in_rest - length(fixed_damage)) * melee_damage) / rounds_in_rest
+  
+  return(list(score = damage))
 }
 
 calculateDamage = function(build, options){
@@ -182,10 +243,10 @@ multiclassPenalty = function(build){
   return(1 - 0.2*penalties)
 }
 
+
+
 calculateAverageDamage = function(attacks, damage, defense){
-  effective_hit_chance = (attacks - defense + 21) / 20
-  effective_hit_chance = sapply(effective_hit_chance, max, 0.05)
-  effective_hit_chance = sapply(effective_hit_chance, min, 0.95)
+  effective_hit_chance = g_chanceToHit(attacks, defense)
   
   hits = sum(effective_hit_chance)
   
