@@ -1,52 +1,158 @@
-g_spellDamage_saveHalf = function(damage, spellSuccessRate){
+g_saves = function(build, feat_list=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  #%%%%%%%%%%%%%%%%%%
+  # Stats
+  #%%%%%%%%%%%%%%%%%%%%
+  saves = c("fortitude"=as.numeric(g_stat_mod(build, "Constitution")),
+            "reflex"=as.numeric(g_stat_mod(build, "Dexterity")),
+            "will"=as.numeric(g_stat_mod(build, "Wisdom")))
+  
+  #%%%%%%%%%%%%%%%%
+  # Class
+  #%%%%%%%%%%%%%%%%%
+  for(class_n in g_uniqClassList(build)){
+    if(!is.null(cls_av[[class_n]]$fortitude)){
+      if(cls_av[[class_n]]$fortitude == "high") saves["fortitude"] = saves["fortitude"] + floor(g_classLevel(build, class_n) / 2 + 2)
+      if(cls_av[[class_n]]$fortitude == "low") saves["fortitude"] = saves["fortitude"] + floor(g_classLevel(build, class_n) / 3)
+    }
+    if(!is.null(cls_av[[class_n]]$reflex)){
+      if(cls_av[[class_n]]$reflex == "high") saves["reflex"] = saves["reflex"] + floor(g_classLevel(build, class_n) / 2 + 2)
+      if(cls_av[[class_n]]$reflex == "low") saves["reflex"] = saves["reflex"] + floor(g_classLevel(build, class_n) / 3)
+    }
+    if(!is.null(cls_av[[class_n]]$will)){
+      if(cls_av[[class_n]]$will == "high") saves["will"] = saves["will"] + floor(g_classLevel(build, class_n) / 2 + 2)
+      if(cls_av[[class_n]]$will == "low") saves["will"] = saves["will"] + floor(g_classLevel(build, class_n) / 3)
+    }
+  }
+  
+  #%%%%%%%%%%%%%
+  # Feats
+  #%%%%%%%%%%%%%%
+  for(feat_n in feat_list){
+    if(is.null(feats_av[[feat_n]]$saves)) next
+    saves = saves + feats_av[[feat_n]]$saves
+  }
+  
+  return(saves)
+}
+
+hasAllFeats = function(build, feat_n, feat_list=NULL){ 
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  return(all(feat_n %in% feat_list)) 
+}
+
+hasAnyFeats = function(build, feat_n, feat_list=NULL){ 
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  return(any(feat_n %in% feat_list)) 
+}
+
+g_level = function(build){ 
+  if(is.null(build$class)) return(0)
+  return(length(g_classList(build)))
+}
+
+g_BAB = function(build){
+  BAB = 0
+  if(g_level(build) == 0) return(0)
+  for(class_n in g_uniqClassList(build)){
+    classLevel = g_classLevel(build, class_n)
+    if(class_n == "any") next
+    if(cls_av[[class_n]][["BAB"]] == "high"){ BAB = BAB + classLevel }
+    if(cls_av[[class_n]][["BAB"]] == "medium"){ BAB = BAB + floor(0.75*classLevel) }
+    if(cls_av[[class_n]][["BAB"]] == "low"){ BAB = BAB + floor(0.5*classLevel) }
+  }
+  
+  return(BAB)
+}
+
+gms = 0
+g_metamagicString = function(build){ 
+  gms <<- gms+1
+  mm_list = g_metamagicList(build)
+  if(length(mm_list) == 0) return("None")
+  return(paste0(mm_list, collapse=" ")) 
+}
+
+g_metamagicList = function(build){
+  feat_list = g_feats(build)
+  metamagic_list = c()
+  for(feat_n in feat_list){
+    if(is.null(feats_av[[feat_n]])) next
+    if(is.null(feats_av[[feat_n]]$isMetamagic)) next
+    if(!feats_av[[feat_n]]$isMetamagic) next
+    metamagic_list = c(metamagic_list, feat_n)
+  }
+  return(metamagic_list)
+}
+
+g_spellSchools = function(spell_n){
+  spellSchools = rep("Universal", length(spell_n))
+  for(i in 1:length(spell_n)){
+    spellSchools[i] = spells_av[[spell_n[i]]]$spell_school
+  }
+  return(spellSchools)
+}
+
+g_spellDamage = function(damage, spellSuccessRate, savePercentage=0.5){
   success_damage = damage * spellSuccessRate
-  failure_damage = damage * (1-spellSuccessRate) * 0.5
+  failure_damage = damage * (1-spellSuccessRate) * savePercentage
   return(success_damage + failure_damage)
 }
 g_enemySave = function(build){
-  return(calculateLevel(build) * 0.4)
-}
-
-g_casterLevel = function(build, options, class_n, feat_list=NULL){
-  if(is.null(feat_list)) feat_list = g_feats(build)
-  casterLevel = g_casterProgression(build, options, class_n, feat_list)
-  
-  return(casterLevel)
-}
-
-g_spellSuccessRate = function(DC, save){
-  return(max(min(DC - save, 19), 1) / 20)
-}
-
-g_spellDC = function(build, options, class_n, spell_n, feat_list=NULL){
-  if(is.null(feat_list)) feat_list = g_feats(build)
-  DC_stat = cls_av[[class_n]]$spell_DC_stat
-  spell_school = spells_av[[spell_n]]$spell_school
-  DC_bonus = 0
-  for(feat_n in feat_list){
-    if(is.null(feats_av[[feat_n]])) next
-    if(is.null(feats_av[[feat_n]]$DC_bonus)) next
-    if(is.null(feats_av[[feat_n]]$DC_bonus[[spell_school]])) next
-    DC_bonus = DC_bonus + feats_av[[feat_n]]$DC_bonus[[spell_school]]
-  }
-  DC = 10 + g_stat_mod(build, DC_stat, feat_list, T) + spells_av[[spell_n]]$spell_level + DC_bonus
-  return(DC)
+  return(g_level(build) * 0.4)
 }
 
 g_casterProgression = function(build, options, class_n, feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
   casterProgression = g_classLevel(build, class_n)
   for(feat_n in feat_list){
-    if(!is.null(feats_av[[feat_n]][["caster_progression"]])
-       & !is.null(feats_av[[feat_n]][["class_that_progresses"]])
-       & !is.null(feats_av[[feat_n]][["class_to_progresses"]])){
-      if(feats_av[[feat_n]][["class_to_progresses"]] == class_n){
-        casterProgression = casterProgression + sum(feats_av[[feat_n]][["caster_progression"]] <= g_classLevel(build, feats_av[[feat_n]][["class_that_progresses"]]))
+    if( !is.null(feats_av[[feat_n]]$caster_progression) & !is.null(feats_av[[feat_n]]$class_that_progresses) & !is.null(feats_av[[feat_n]]$class_to_progress) ){
+      
+      if(feats_av[[feat_n]]$class_to_progress == class_n){
+        casterProgression = casterProgression + sum(feats_av[[feat_n]]$caster_progression <= g_classLevel(build, feats_av[[feat_n]]$class_that_progresses))
       }
     }
   }
+  
   return(casterProgression)
 }
+
+g_casterLevel = function(build, options, class_n, feat_list=NULL, caster_progression=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  if(is.null(caster_progression)) caster_progression = g_casterProgression(build, options, class_n, feat_list)
+  caster_level = caster_progression
+  return(caster_level)
+}
+
+g_spellSuccessRate = function(DC, save){
+  return(max(min(DC - save, 19), 1) / 20)
+}
+
+g_spellDC = function(build, options, class_n, spell_n){
+  base_DC = build$spell_DCs[[class_n]][spells_av[[spell_n]]$spell_school]
+  spell_level = 0
+  if(!is.null(spells_av[[spell_n]]$spell_level)) spell_level = spells_av[[spell_n]]$spell_level
+  DC = base_DC + spell_level
+  return(DC)
+}
+g_baseSpellDC = function(build, options, class_n, school_n, feat_list=NULL, stat_mod=NULL){
+  if(is.null(feat_list)) feat_list = g_feats(build)
+  if(is.null(stat_mod)) stat_mod = g_stat_mod(build, cls_av[[class_n]]$spell_DC_stat)
+  
+  spell_school = rep(10+stat_mod, length(school_n))
+  names(spell_school) = school_n
+  
+  for(feat_n in feat_list){
+    if(is.null(feats_av[[feat_n]]$DC_bonus)) next
+    DC_bonus = feats_av[[feat_n]]$DC_bonus
+    DC_bonus = DC_bonus[names(DC_bonus) %in% school_n]
+    
+    spell_school[names(DC_bonus)] = spell_school[names(DC_bonus)] + DC_bonus
+  }
+  
+  return(spell_school)
+}
+
 
 g_bonusSpellSlotsByLevel = function(stat_mod, level){
   return(max(floor((stat_mod - level)/4)+1, 0))
@@ -57,7 +163,8 @@ g_bonusSpellSlots = function(build, options, class_n, feat_list=NULL){
   if(is.null(cls_av[[class_n]][["spell_stat"]])) return(c())
   spell_stat = cls_av[[class_n]][["spell_stat"]]
   
-  stat_mod = g_stat_mod(build, spell_stat, feat_list)
+  stat_mod = g_stat_mod(build, spell_stat, TRUE)
+  if("Spellcasting Prodigy" %in% feat_list) stat_mod = stat_mod + 1
   
   bonus_spells = rep(0, 10)
   for(i in 2:10){
@@ -66,34 +173,19 @@ g_bonusSpellSlots = function(build, options, class_n, feat_list=NULL){
   return(bonus_spells)
 }
 
-g_spellslots = function(build, options, class_n, feat_list=NULL){
+g_spellslots = function(build, options, class_n, feat_list=NULL, caster_progression=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
-  class_level = g_classLevel(build, class_n)
-  spell_slots = cls_av[[class_n]][["spells"]][[class_level]] 
+  if(is.null(caster_progression)) caster_progression = g_casterProgression(build, options, class_n, feat_list)
+  spell_slots = cls_av[[class_n]][["spells"]][[caster_progression]] 
   spell_slots = spell_slots + g_bonusSpellSlots(build, options, class_n, feat_list)[1:length(spell_slots)]
   return(spell_slots)
 }
 
 g_spells = function(build, options, class_n, feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
-  if(is.null(build$spell_build)) return(c())
-  if(is.null(cls_av[[class_n]][["spell_build"]])) return(c())
-  if(is.null(cls_av[[class_n]][["spell_build"]][[build$spell_build]])) return(c())
+  if(is.null(build$spell_lists)) return(c())
   
-  spell_slots = g_spellslots(build, options, class_n)
-  if(class_n == "Wizard" & !is.null(build$forbidden_school)) spell_slots = spell_slots + 1 # Wizard Specialization
-  spell_list = c()
-  if(length(spell_slots) == 0) return(c())
-  for(i in (1:length(spell_slots))){
-    if( length(cls_av[[class_n]][["spell_build"]][[build$spell_build]]) < i ) break
-    if( is.null(cls_av[[class_n]][["spell_build"]][[build$spell_build]][[i]]) ) next
-    spell_list_level_i = cls_av[[class_n]][["spell_build"]][[build$spell_build]][[i]]
-    for(metamagic in unique(names(spell_list_level_i))){
-      if(metamagic == "") next
-      if(!hasAllFeats(build, metamagic, feat_list)){ spell_list_level_i = spell_list_level_i[names(spell_list_level_i) != metamagic] }
-    }
-    spell_list = c(spell_list, spell_list_level_i[1:min(length(spell_list_level_i), spell_slots[i])])
-  }
+  spell_list = unlist(build$spell_lists[[class_n]])
   
   return(spell_list)
 }
@@ -169,7 +261,7 @@ g_classSkills = function(class_n){
 }
 
 g_skillMaxes = function(build, skill_n){
-  maxSkill = 3+calculateLevel(build)
+  maxSkill = 3+g_level(build)
   minSkill = floor(maxSkill/2)
   skill = rep(minSkill, length(skill_n))
   for(class_n in g_uniqClassList(build)){
@@ -212,7 +304,7 @@ g_scoreFeats = function(build, feat_list, options=list()){
     scoring_build = build
     scoring_build$feats[[length(scoring_build$feats)+1]] = c(feat_n)
     global_evaluations_4 <<- global_evaluations_4 + 1
-    scores[ind] = evaluateBuild(scoring_build, options, calculateLevel(scoring_build), 1)$score
+    scores[ind] = evaluateBuild(scoring_build, options, g_level(scoring_build), 1)$score
   }
   return(scores)
 }
@@ -225,16 +317,7 @@ g_orderedBestFeats = function(build, options=list()){
   return(feat_list)
 }
 
-g_stats = function(build, stats, feat_list=NULL){
-  if(is.null(feat_list)) feat_list = g_feats(build)
-  base_stats = build$stats[stats]
-  for(stat_n in names(base_stats)){
-    base_stats[stat_n] = base_stats[stat_n] + sum(feat_list %in% feats_to_increase_stats[[stat_n]])
-  }
-  
-  if(!is.null(build$stat_increase)){ base_stats[build$stat_increase] = base_stats[build$stat_increase] + floor(calculateLevel(build) / 4) }
-  return(unlist(base_stats[stats]))
-}
+
 
 g_featsInFeatType = function(feat_type){
   feat_list = c()
@@ -278,24 +361,42 @@ g_prestigeFeatRequirements = function(build, prestigeSearch=""){
   return(prereq_feats)
 }
 
-g_stat_enhancement_mod = function(build, stat, feat_list=NULL, useSpells=FALSE){
+g_stat_enhancement = function(build, options, stat, feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
   
   equipment_bonus = build$equipment_stats
   enhancement_bonus = equipment_bonus
-  if(useSpells){
-    for(feat_n in feat_list){
-      if(is.null(feats_av[[feat_n]])) next
-      if(is.null(feats_av[[feat_n]]$enhancement_bonus)) next
-      spell_bonus = feats_av[[feat_n]]$enhancement_bonus(build, options, feat_list, equipment_bonus)
-      enhancement_bonus = pmax(enhancement_bonus, spell_bonus)
-    }
+  for(feat_n in feat_list){
+    if(is.null(feats_av[[feat_n]])) next
+    if(is.null(feats_av[[feat_n]]$enhancement_bonus)) next
+    spell_bonus = feats_av[[feat_n]]$enhancement_bonus(build, options, feat_list, equipment_bonus)
+    enhancement_bonus = pmax(enhancement_bonus, spell_bonus)
   }
-  return(enhancement_bonus)
+  return(enhancement_bonus[stat])
 }
-g_stat_mod = function(build, stat, feat_list=NULL, useSpells=FALSE){
+
+g_stats = function(build, options, stats, feat_list=NULL, useSpells=F){
   if(is.null(feat_list)) feat_list = g_feats(build)
-  stats = g_stats(build, stat, feat_list) + unlist(build$equipment_stats[stat])
+  base_stats = build$base_stats[stats]
+  for(stat_n in names(base_stats)){
+    base_stats[stat_n] = base_stats[stat_n] + sum(feat_list %in% feats_to_increase_stats[[stat_n]])
+  }
+  if(useSpells) base_stats = base_stats + g_stat_enhancement(build, options, stats, feat_list)
+  if(!is.null(build$stat_increase)){ base_stats[build$stat_increase] = base_stats[build$stat_increase] + floor(g_level(build) / 4) }
+  return(unlist(base_stats[stats], F, F))
+}
+
+g_inherentValue = function(feat_list){
+  inherent_value = 0
+  for(feat_n in feat_list){
+    if( !is.null(feats_av[[feat_n]]$inherent_value) ) inherent_value = inherent_value + feats_av[[feat_n]]$inherent_value
+  }
+  return(inherent_value)
+}
+
+g_stat_mod = function(build, stat_n, useRest=F){
+  stats = build$stats[stat_n]
+  if(useRest) stats = build$rest_stats[stat_n]
   return(floor((stats - 10) / 2))
 }
 
@@ -351,7 +452,7 @@ g_hitsAbsorbed = function(build, options, feat_list=NULL){
 g_HP = function(build, options, feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
   
-  HP = g_stat_mod(build, "Constitution", feat_list, T) * calculateLevel(build)
+  HP = g_stat_mod(build, "Constitution") * g_level(build)
   
   class_list = g_classList(build)
   for(class_n in g_uniqClassList(build)){
@@ -379,7 +480,7 @@ g_wearableArmorTypes = function(build, feat_list=NULL){
 
 g_AC = function(build, options, feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
-  dex_mod = g_stat_mod(build, "Dexterity", feat_list, TRUE)
+  dex_mod = g_stat_mod(build, "Dexterity")
   best_AC = 0
   
   wearableArmorTypes = g_wearableArmorTypes(build, feat_list)

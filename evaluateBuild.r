@@ -1,12 +1,12 @@
 evaluateBuild = function(build, options=list(), level=NULL, levels_to_evaluate=NULL){
   global_evaluations <<- global_evaluations + 1
-  global_build <<- build
+  #global_build <<- build
 
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   # Here is a bunch of code to make sure that levels and levels_to_evaluate are feasible
   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  if(is.null(level)) level = calculateLevel(build)
-  if(is.null(levels_to_evaluate)) levels_to_evaluate = calculateLevel(build)
+  if(is.null(level)) level = g_level(build)
+  if(is.null(levels_to_evaluate)) levels_to_evaluate = g_level(build)
   if(level < 1) level = 1
   if(levels_to_evaluate < 1) levels_to_evaluate = 1
   if(levels_to_evaluate > level) levels_to_evaluate = level
@@ -17,21 +17,23 @@ evaluateBuild = function(build, options=list(), level=NULL, levels_to_evaluate=N
   score_per_level = rep(0, level)
   damage_per_level = rep(0, level)
   multiclass_penalty = rep(1, level)
+  IV_per_level = rep(0, level)
   
-  level_build = createPrefixBuild(build, calculateLevel(build) - level, F)
+  level_build = createPrefixBuild(build, g_level(build) - level, F)
   for(i in min_lv_to_eval:level){
-    cur_level_build = createPrefixBuild(level_build, calculateLevel(level_build) - i, F)
+    cur_level_build = createPrefixBuild(level_build, g_level(level_build) - i, F)
     feat_list = g_feats(cur_level_build)
+    cur_level_build = cullSpellList(cur_level_build, options, feat_list)
     
     defensiveMelee_info = evaluateBuild_defensiveMelee(cur_level_build, options, feat_list)
     options$currentArmorType = defensiveMelee_info$armorType
-    offensiveMelee_info = evaluateBuild_offensiveMelee(cur_level_build, options, feat_list)
+    offensive_info = evaluateBuild_offensive(cur_level_build, options, feat_list)
     
-    
-    offense_per_level[i] = offensiveMelee_info$score
+    offense_per_level[i] = offensive_info$score
     defense_per_level[i] = defensiveMelee_info$score
     
-    damage_per_level[i] = offensiveMelee_info$score
+    damage_per_level[i] = offensive_info$score
+    IV_per_level[i] = g_inherentValue(feat_list)
     
     if(i < level){
       multiclass_penalty[i] = multiclassPenalty(cur_level_build) 
@@ -41,8 +43,8 @@ evaluateBuild = function(build, options=list(), level=NULL, levels_to_evaluate=N
   mc_pen_multiplier = sum(min_lv_to_eval:level * multiclass_penalty[min_lv_to_eval:level]) / sum(min_lv_to_eval:level)
   offensive_score = sum(min_lv_to_eval:level * offense_per_level[min_lv_to_eval:level], na.rm=T) / sum(min_lv_to_eval:level)
   defensive_score = sum(min_lv_to_eval:level * defense_per_level[min_lv_to_eval:level], na.rm=T) / sum(min_lv_to_eval:level)
-  feat_multiplier = 1+(sum(unique(g_feats(build)) %in% g_featsInFeatType("Regular")) * options$feat_multiplier)
-  restTimer_rounds = calculateLevel(build) * 6
+  feat_multiplier = 1+(sum(unique(g_feats(build)) %in% GLOBAL_feat_types[["Regular"]]) * options$feat_multiplier)
+  restTimer_rounds = g_level(build) * 6
   score = mc_pen_multiplier * feat_multiplier * offensive_score * min(defensive_score, restTimer_rounds)
   
   return(list(offensive_score = offense_per_level,
@@ -56,7 +58,7 @@ evaluateBuild = function(build, options=list(), level=NULL, levels_to_evaluate=N
 
 evaluateBuild_defensiveMelee = function(build, options=list(), feat_list=NULL){
   MIN_ADJ = 0.00000001
-  level = calculateLevel(build)
+  level = g_level(build)
   enemy_attack_adjustment = 0
   enemy_damage_adjustment = 0
   if(!is.null(options$enemy_attack_adjustment)) enemy_attack_adjustment = options$enemy_attack_adjustment
@@ -87,7 +89,7 @@ evaluateBuild_defensiveMelee = function(build, options=list(), feat_list=NULL){
               armorType=player_armorType))
 }
 
-evaluateBuild_offensiveMelee = function(build, options=list(), feat_list=NULL){
+evaluateBuild_offensive = function(build, options=list(), feat_list=NULL){
   if(is.null(feat_list)) feat_list = g_feats(build)
   enemy_defense_adjustment = 0
   if(!is.null(options$enemy_defense_adjustment)) enemy_defense_adjustment = options$enemy_defense_adjustment
@@ -97,14 +99,14 @@ evaluateBuild_offensiveMelee = function(build, options=list(), feat_list=NULL){
   player_damage_rolls = calculateDamage(build, options)
   player_attack_rolls = calculateAttacks(build, options)
   
-  enemy_defense = calculateLevel(build) + 10 + enemy_defense_adjustment
+  enemy_defense = g_level(build) + 10 + enemy_defense_adjustment
   
   melee_damage = calculateAverageDamage(player_attack_rolls, player_damage_rolls, enemy_defense)
   
   fixed_damage = c()
   for(feat_n in feat_list){
-    if(!is.null(feats_av[[feat_n]][["fixed_damage"]])){
-      fixed_damage = c(fixed_damage, feats_av[[feat_n]][["fixed_damage"]](build, options, feat_list))
+    if(!is.null(feats_av[[feat_n]]$fixed_damage)){
+      fixed_damage = c(fixed_damage, feats_av[[feat_n]]$fixed_damage(build, options, feat_list))
     }
   }
   
@@ -112,7 +114,7 @@ evaluateBuild_offensiveMelee = function(build, options=list(), feat_list=NULL){
     fixed_damage = fixed_damage[order(fixed_damage, decreasing=TRUE)]
     fixed_damage = fixed_damage[fixed_damage > melee_damage]
   }
-  rounds_in_rest = floor(calculateLevel(build) * 10 * combat_ratio)
+  rounds_in_rest = floor(floor(g_level(build) * REST_TIMER * combat_ratio) / 6)
   if(length(fixed_damage) > rounds_in_rest) fixed_damage = fixed_damage[1:rounds_in_rest]
   
   damage = (sum(fixed_damage) + (rounds_in_rest - length(fixed_damage)) * melee_damage) / rounds_in_rest
@@ -136,7 +138,7 @@ calculateDamage = function(build, options){
   
   damage = damage + build$weapon$damage
   damage = damage + build$weapon$enhancement_bonus # Enhancement Bonus
-  damage = damage + (g_stat_mod(build, "Strength", feat_list) * damage_multiplier)
+  damage = damage + (g_stat_mod(build, "Strength") * damage_multiplier)
   
   for(feat_n in feat_list){
     if(!is.null(feats_av[[feat_n]][["damage"]])){
@@ -167,7 +169,7 @@ calculateDamage = function(build, options){
 }
 
 calculateAttacks = function(build, options){
-  BAB = calculateBAB(build)
+  BAB = g_BAB(build)
   attack_bonus = 0
   
   main_hand_attacks = c()
@@ -179,7 +181,7 @@ calculateAttacks = function(build, options){
   feat_list = unique(g_feats(build))
   
   attack_bonus = attack_bonus + max(build$weapon$enhancement_bonus, build$weapon$attack_bonus) #Enhancement Bonus
-  attack_bonus = attack_bonus + g_stat_mod(build, "Strength", feat_list)
+  attack_bonus = attack_bonus + g_stat_mod(build, "Strength")
   
   for(feat_n in feat_list){
     if(!is.null(feats_av[[feat_n]][["attack_bonus"]])){

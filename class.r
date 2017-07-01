@@ -3,7 +3,7 @@ cls_av[["Fighter"]] = list(class_name="Fighter",
                            base=T,
                            hit_die=10,
                            BAB="high",
-                           fort="high",
+                           fortitude="high",
                            reflex="low",
                            will="low",
                            skill_points=2,
@@ -24,7 +24,7 @@ cls_av[["Monk"]] = list(class_name="Monk",
                         base=T,
                         hit_die=8,
                         BAB="medium",
-                        fort="high",
+                        fortitude="high",
                         reflex="high",
                         will="high",
                         skill_points=4,
@@ -52,7 +52,7 @@ cls_av[["Swashbuckler"]] = list(class_name="Swashbuckler",
                                 base=T,
                                 hit_die=10,
                                 BAB="high",
-                                fort="high",
+                                fortitude="high",
                                 reflex="high",
                                 will="low",
                                 skill_points=4,
@@ -80,7 +80,7 @@ cls_av[["Dervish"]] = list(class_name="Dervish",
                            base=F,
                            hit_die=10,
                            BAB="high",
-                           fort="low",
+                           fortitude="low",
                            reflex="high",
                            will="high",
                            skill_points=4,
@@ -105,7 +105,7 @@ cls_av[["Invisible Blade"]] = list(class_name="Invisible Blade",
                                    base=F,
                                    hit_die=6,
                                    BAB="high",
-                                   fort="low",
+                                   fortitude="low",
                                    reflex="high",
                                    will="low",
                                    skill_points=4,
@@ -126,7 +126,7 @@ cls_av[["Tempest"]] = list(class_name="Tempest",
                            base=F,
                            hit_die=10,
                            BAB="high",
-                           fort="high",
+                           fortitude="high",
                            reflex="low",
                            will="low",
                            skill_points=2,
@@ -147,7 +147,7 @@ cls_av[["Ranger"]] = list(class_name="Ranger",
                           isCaster=T,
                           isDivineCaster=T,
                           BAB="high",
-                          fort="high",
+                          fortitude="high",
                           reflex="high",
                           will="low",
                           skill_points=6,
@@ -188,9 +188,17 @@ cls_av[["Ranger"]][["spells"]][[28]] = c(0, 3, 3, 3, 3)
 cls_av[["Ranger"]][["spells"]][[29]] = c(0, 3, 3, 3, 3)
 cls_av[["Ranger"]][["spells"]][[30]] = c(0, 3, 3, 3, 3)
 
-cls_av[["Ranger"]][["spell_build"]][["Offensive Melee"]] = list()
-cls_av[["Ranger"]][["spell_build"]][["Offensive Melee"]][[2 ]] = c("Blades of Fire", "Blades of Fire")
-cls_av[["Ranger"]][["spell_build"]][["Offensive Melee"]][[3 ]] = c("Cat's Grace", "Animalistic Power", "Cat's Grace", "Animalistic Power")
+cls_av[["Ranger"]][["spell_list"]] = list()
+cls_av[["Ranger"]][["spell_list"]][[1 ]] = c()
+cls_av[["Ranger"]][["spell_list"]][[2 ]] = c("Blades of Fire")
+cls_av[["Ranger"]][["spell_list"]][[3 ]] = c("Cat's Grace", "Animalistic Power", 
+                                             `Extend Spell`="Blades of Fire")
+cls_av[["Ranger"]][["spell_list"]][[4 ]] = c(`Extend Spell`="Cat's Grace", `Extend Spell`="Animalistic Power")
+cls_av[["Ranger"]][["spell_list"]][[5 ]] = c()
+
+# cls_av[["Ranger"]][["spell_build"]][["Offensive Melee"]] = list()
+# cls_av[["Ranger"]][["spell_build"]][["Offensive Melee"]][[2 ]] = c("Blades of Fire", "Blades of Fire")
+# cls_av[["Ranger"]][["spell_build"]][["Offensive Melee"]][[3 ]] = c("Cat's Grace", "Animalistic Power", "Cat's Grace", "Animalistic Power")
 
 
 cls_av[["Ranger"]][["feats"]][[1 ]] = c("Track",
@@ -212,7 +220,7 @@ cls_av[["Whirling Dervish"]] = list(class_name="Whirling Dervish",
                           base=F,
                           hit_die=6,
                           BAB="medium",
-                          fort="low",
+                          fortitude="low",
                           reflex="high",
                           will="low",
                           skill_points=6,
@@ -242,17 +250,18 @@ cls_av[["Wizard"]] = list(class_name="Wizard",
                           isCaster=T,
                           isArcaneCaster=T,
                           BAB="low",
-                          fort="low",
+                          fortitude="low",
                           reflex="low",
                           will="high",
                           skill_points=2,
                           prereq_BAB=0,
                           prereq_feats=c(),
                           prereq_skills=list(),
-                          class_skills=c(),
+                          class_skills=c("Concentration", "Spellcraft"),
                           feats= vector("list", 30),
                           bonus_feats=c(5,10,15,20,23,26,29),
                           spells=vector("list", 30),
+                          spell_list=vector("list", 10),
                           spell_stat="Intelligence",
                           spell_DC_stat="Intelligence",
                           spell_build=list())
@@ -287,34 +296,88 @@ cls_av[["Wizard"]][["spells"]][[28]] = c(4, 4, 4, 4, 4, 4, 4, 4, 4, 4)
 cls_av[["Wizard"]][["spells"]][[29]] = c(4, 4, 4, 4, 4, 4, 4, 4, 4, 4)
 cls_av[["Wizard"]][["spells"]][[30]] = c(4, 4, 4, 4, 4, 4, 4, 4, 4, 4)
 
-cls_av[["Wizard"]][["spell_build"]][["Offensive Melee"]] = list()
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]] = list()
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[1 ]] = rep("Ray of Frost", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[2 ]] = rep("Magic Missile", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[3 ]] = rep("Melf's Acid Arrow", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[4 ]] = rep("Flame Arrow", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[5 ]] = rep("Isaac's Lesser Missile Storm", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[6 ]] = rep("Arc of Lightning", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[7 ]] = rep("Isaac's Greater Missile Storm", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[8 ]] = rep("Delayed Blast Fireball", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[9 ]] = rep("Polar Ray", 10)
-cls_av[["Wizard"]][["spell_build"]][["Blaster"]][[10]] = rep("Burst of Glacial Wrath", 10)
 
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]] = list()
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[1 ]] = c(`Extend Spell`="Acid Splash", rep("Acid Splash", 10))
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[2 ]] = rep("Magic Missile", 10)
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[3 ]] = c("Gedlee's Electric Loop", "Mirror Image", rep("Gedlee's Electric Loop", 10))
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[4 ]] = c("Fireball", "Displacement", rep("Fireball", 10))
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[5 ]] = rep("Ice Storm", 10)
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[6 ]] = rep("Arc of Lightning", 10)
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[7 ]] = rep("Chain Lightning", 10)
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[8 ]] = rep("Delayed Blast Fireball", 10)
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[9 ]] = rep("Horrid Wilting", 10)
-cls_av[["Wizard"]][["spell_build"]][["Area Blaster"]][[10]] = rep("Burst of Glacial Wrath", 10)
-cls_av[["Wizard"]][["spell_build"]][["DC Caster"]] = list()
 
+cls_av[["Wizard"]][["spell_list"]][[1 ]] = c("Ray of Frost", "Acid Splash")
+cls_av[["Wizard"]][["spell_list"]][[2 ]] = c("Magic Missile")
+cls_av[["Wizard"]][["spell_list"]][[3 ]] = c("Melf's Acid Arrow", "Gedlee's Electric Loop", "Mirror Image")
+cls_av[["Wizard"]][["spell_list"]][[4 ]] = c("Flame Arrow", "Fireball", "Displacement")
+cls_av[["Wizard"]][["spell_list"]][[5 ]] = c("Isaac's Lesser Missile Storm", "Ice Storm")
+cls_av[["Wizard"]][["spell_list"]][[6 ]] = c("Arc of Lightning")
+cls_av[["Wizard"]][["spell_list"]][[7 ]] = c("Isaac's Greater Missile Storm", "Chain Lightning")
+cls_av[["Wizard"]][["spell_list"]][[8 ]] = c("Delayed Blast Fireball")
+cls_av[["Wizard"]][["spell_list"]][[9 ]] = c("Polar Ray", "Horrid Wilting")
+cls_av[["Wizard"]][["spell_list"]][[10]] = c("Burst of Glacial Wrath")
 
 cls_av[["Wizard"]][["feats"]][[1]] = c("Scribe Scroll",
                                         "Summon Familiar",
                                         "Weapon Proficiency (Wizard)",
                                         "Wizard Spellcasting")
+
+
+cls_av[["Arcane Scholar"]] = list(class_name="Arcane Scholar",
+                                    base=F,
+                                    hit_die=4,
+                                    BAB="low",
+                                    fortitude="low",
+                                    reflex="low",
+                                    will="high",
+                                    skill_points=2,
+                                    prereq_feats=c("Empower Spell", "Skill Focus (Concentration)", "Skill Focus (Spellcraft)"),
+                                    prereq_skills=list("Spellcraft"=8),
+                                    prereq_arcane_spellLevel=3,
+                                    class_skills=c("Appraise", "Concentration", "Craft Alchemy", "Diplomacy", "Search", "Spellcraft"),
+                                    feats= vector("list", 30),
+                                    bonus_feats=c(1))
+cls_av[["Arcane Scholar"]][["feats"]][[1 ]] = c("Maximize Spell")
+cls_av[["Arcane Scholar"]][["feats"]][[2 ]] = c("Spell Knowledge +1")
+cls_av[["Arcane Scholar"]][["feats"]][[3 ]] = c("Improved Empower Spell")
+cls_av[["Arcane Scholar"]][["feats"]][[4 ]] = c()
+cls_av[["Arcane Scholar"]][["feats"]][[5 ]] = c("Quicken Spell")
+cls_av[["Arcane Scholar"]][["feats"]][[6 ]] = c()
+cls_av[["Arcane Scholar"]][["feats"]][[7 ]] = c("Improved Maximize Spell")
+cls_av[["Arcane Scholar"]][["feats"]][[8 ]] = c("Spell Knowledge +2")
+cls_av[["Arcane Scholar"]][["feats"]][[9 ]] = c()
+cls_av[["Arcane Scholar"]][["feats"]][[10 ]] = c("Improved Quicken Spell")
+
+
+setupClass_metamagics = function(class_avail, spells_avail, feats_avail){
+  class_avail = cls_av
+  spells_avail = spells_av
+  feats_avail = feats_av
+  for(class_n in names(class_avail)){
+    if(is.null(class_avail[[class_n]]$isCaster)) next
+    if(!class_avail[[class_n]]$isCaster) next
+    if(is.null(class_avail[[class_n]]$spell_list)) next
+    if(length(class_avail[[class_n]]$spell_list) == 0) next
+    
+    for( spell_level in 1:length(class_avail[[class_n]]$spell_list) ){
+      spell_list = class_avail[[class_n]]$spell_list[[spell_level]]
+      if(is.null(spell_list)) next
+      
+      if(is.null(names(spell_list))) names(class_avail[[class_n]]$spell_list[[spell_level]]) = rep("None", length(spell_list))
+      if(!is.null(names(spell_list))) names(class_avail[[class_n]]$spell_list[[spell_level]])[is.na(names(spell_list))] = "None"
+      spell_list = class_avail[[class_n]]$spell_list[[spell_level]]
+      spell_list = spell_list[names(spell_list) == "None"]
+      
+      for( spell_n in spell_list ){
+        if(is.null(spells_avail[[spell_n]]$metamagics)) next
+        for( metamagic in spells_avail[[spell_n]]$metamagics ){
+          if(is.null(feats_avail[[metamagic]]$levelAdjust)) break
+          mm_sl = spell_level + feats_avail[[metamagic]]$levelAdjust
+          if( mm_sl > length(class_avail[[class_n]]$spell_list) ) next
+          
+          sl_spellList = class_avail[[class_n]]$spell_list[[mm_sl]]
+          
+          class_avail[[class_n]]$spell_list[[mm_sl]] = c(sl_spellList, spell_n)
+          names(class_avail[[class_n]]$spell_list[[mm_sl]])[length(sl_spellList)+1] = metamagic
+        }
+      }
+      sl_spellList = class_avail[[class_n]]$spell_list[[spell_level]]
+      class_avail[[class_n]]$spell_list[[spell_level]] = sl_spellList[!duplicated(cbind(names(sl_spellList), sl_spellList))]
+    }
+  }
+  class_avail$Wizard$spell_list
+  return(class_avail)
+}
+cls_av = setupClass_metamagics(cls_av, spells_av, feats_av)
